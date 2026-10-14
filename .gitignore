@@ -9,3 +9,4 @@ components/atari_st/host/build/
 __pycache__/
 *.ppm
 .DS_Store
+.vscode
