@@ -1,0 +1,9 @@
+dependencies:
+  idf:
+    version: ">=5.5"
+  lvgl/lvgl:
+    version: "^9.2.2"
+  espressif/mdns:
+    version: "^1.8.0"
+    rules:
+      - if: "$CONFIG{ST_WEB} == True"

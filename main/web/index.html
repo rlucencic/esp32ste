@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atari STE</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #10141c; --card: #1e2533; --row: #283143; --text: #e8ecf2;
+    --dim: #8a94a6; --accent: #2196f3; --ok: #4cc38a; --warn: #e5a54b; --bad: #e5604b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  main { max-width: 900px; margin: 0 auto; padding: 32px 16px 48px; }
+  h1 { font-size: 26px; font-weight: 600; margin: 0 0 4px; }
+  .sub { color: var(--dim); margin: 0 0 24px; }
+  #drop {
+    border: 2px dashed #3a4559; border-radius: 12px; background: var(--card);
+    padding: 36px 16px; text-align: center; cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  #drop.over { border-color: var(--accent); background: #22304a; }
+  #drop strong { display: block; font-size: 18px; margin-bottom: 4px; }
+  #drop span { color: var(--dim); }
+  #log { margin: 16px 0 0; padding: 0; list-style: none; }
+  #log li { padding: 4px 0; color: var(--dim); }
+  #log li.ok { color: var(--ok); }
+  #log li.bad { color: var(--bad); }
+  h2 {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 18px; font-weight: 600; margin: 32px 0 12px;
+  }
+  h2 small { font-size: 14px; font-weight: 400; color: var(--dim); }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 12px; overflow: hidden; }
+  td { padding: 12px 16px; border-top: 1px solid var(--bg); vertical-align: middle; }
+  tr:first-child td { border-top: 0; }
+  td.name { word-break: break-all; }
+  td.size { color: var(--dim); white-space: nowrap; text-align: right; }
+  td.actions { white-space: nowrap; text-align: right; }
+  .badge {
+    display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 10px;
+    background: var(--row); color: var(--warn); font-size: 13px;
+  }
+  a, button {
+    font: inherit; font-size: 14px; color: var(--text); background: var(--row);
+    border: 0; border-radius: 8px; padding: 6px 12px; margin-left: 6px;
+    text-decoration: none; cursor: pointer;
+  }
+  a:hover, button:hover { background: #34405a; }
+  button:disabled { opacity: .4; cursor: default; }
+  .empty { color: var(--dim); text-align: center; padding: 24px; }
+  @media (max-width: 520px) {
+    td { padding: 10px; }
+    td.size { display: none; }
+  }
+
+  /* Status */
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+  .card h3 {
+    display: flex; justify-content: space-between; align-items: center;
+    margin: 0 0 10px; font-size: 15px; font-weight: 600; color: var(--dim);
+    text-transform: uppercase; letter-spacing: .04em;
+  }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 15px; }
+  .kv dt { color: var(--dim); }
+  .kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+  .pill { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 10px; text-transform: none; letter-spacing: 0; }
+  .pill.running { background: #1d3b2e; color: var(--ok); }
+  .pill.paused, .pill.setup { background: #3b321d; color: var(--warn); }
+  .pill.offline { background: #3b211d; color: var(--bad); }
+  .bar { height: 6px; border-radius: 3px; background: var(--row); margin-top: 4px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .4s; }
+  .bar i.warn { background: var(--warn); }
+  .bar i.bad { background: var(--bad); }
+  .drive { display: grid; grid-template-columns: 14px 26px 1fr; gap: 2px 8px; align-items: baseline; padding: 6px 0; }
+  .drive + .drive { border-top: 1px solid var(--bg); }
+  .led { width: 10px; height: 10px; border-radius: 50%; background: #2c3546; align-self: start; margin-top: 7px; }
+  .led.on { background: #ff5a3c; box-shadow: 0 0 8px #ff5a3c; }
+  .drive b { font-weight: 600; }
+  .drive .what { min-width: 0; overflow-wrap: anywhere; }
+  .drive .detail { grid-column: 3; color: var(--dim); font-size: 13px; }
+  .dim { color: var(--dim); }
+  .dev { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; }
+  .dev + .dev { border-top: 1px solid var(--bg); }
+  .dev .batt { width: 90px; flex: none; text-align: right; font-size: 13px; color: var(--dim); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Atari STE</h1>
+  <p class="sub">The emulator on the MaTouch board, and the floppy disk images on its SD card.</p>
+
+  <div class="grid">
+    <section class="card">
+      <h3>Atari <span id="state" class="pill"></span></h3>
+      <dl class="kv" id="machine"></dl>
+    </section>
+    <section class="card">
+      <h3>Drives</h3>
+      <div id="drives"></div>
+    </section>
+    <section class="card">
+      <h3>Board</h3>
+      <dl class="kv" id="board"></dl>
+    </section>
+    <section class="card">
+      <h3>Bluetooth</h3>
+      <div id="bluetooth"></div>
+    </section>
+  </div>
+
+  <h2>Floppy disks</h2>
+
+  <div id="drop" tabindex="0">
+    <strong>Drop .ST, .MSA or .ZIP files here</strong>
+    <span>or click to choose them. ZIP files are unpacked.</span>
+    <input id="pick" type="file" multiple accept=".st,.msa,.zip" hidden>
+  </div>
+  <ul id="log"></ul>
+
+  <h2>On the SD card <small id="free"></small></h2>
+  <table><tbody id="disks"><tr><td class="empty">Loading…</td></tr></tbody></table>
+</main>
+
+<script>
+const IMAGE = /\.(st|msa)$/i;
+const $ = id => document.getElementById(id);
+
+function size(n) {
+  return n >= 1073741824 ? (n / 1073741824).toFixed(1) + " GB" :
+         n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.round(n / 1024) + " KB";
+}
+
+function log(text, cls) {
+  const li = document.createElement("li");
+  li.textContent = text;
+  if (cls) li.className = cls;
+  $("log").prepend(li);
+  return li;
+}
+
+async function refresh() {
+  let data;
+  try {
+    data = await (await fetch("/api/floppies")).json();
+  } catch (e) {
+    $("disks").innerHTML = '<tr><td class="empty">The board does not answer.</td></tr>';
+    return;
+  }
+  $("free").textContent = data.ready ? size(data.free) + " free" : "no SD card";
+  const rows = data.disks.map(d => {
+    const tr = document.createElement("tr");
+    const name = document.createElement("td");
+    name.className = "name";
+    name.textContent = d.name;
+    if (d.drive) {
+      const b = document.createElement("span");
+      b.className = "badge";
+      b.textContent = "in " + d.drive + ":";
+      name.append(b);
+    }
+    const sz = document.createElement("td");
+    sz.className = "size";
+    sz.textContent = size(d.size);
+    const act = document.createElement("td");
+    act.className = "actions";
+    const dl = document.createElement("a");
+    dl.href = "/floppies/" + encodeURIComponent(d.name);
+    dl.textContent = "Download";
+    const del = document.createElement("button");
+    del.textContent = "Delete";
+    del.disabled = !!d.drive;
+    del.title = d.drive ? "Eject it on the Atari first" : "";
+    del.onclick = async () => {
+      if (!confirm("Delete " + d.name + "?")) return;
+      const r = await fetch(dl.href, { method: "DELETE" });
+      if (!r.ok) log(d.name + ": " + await r.text(), "bad");
+      refresh();
+    };
+    act.append(dl, del);
+    tr.append(name, sz, act);
+    return tr;
+  });
+  $("disks").replaceChildren(...rows);
+  if (!rows.length) {
+    $("disks").innerHTML = '<tr><td class="empty">No disk images yet.</td></tr>';
+  }
+}
+
+async function upload(name, data) {
+  const line = log("Sending " + name + " …");
+  try {
+    const r = await fetch("/floppies/" + encodeURIComponent(name), { method: "PUT", body: data });
+    const text = await r.text();
+    line.textContent = r.ok ? name + " is on the board (" + size(data.byteLength ?? data.size) + ")"
+                            : name + ": " + text;
+    line.className = r.ok ? "ok" : "bad";
+  } catch (e) {
+    line.textContent = name + ": the board does not answer";
+    line.className = "bad";
+  }
+}
+
+/* The disk images in a ZIP file: [{name, data}] */
+async function unzip(file) {
+  const buf = await file.arrayBuffer();
+  const v = new DataView(buf);
+  let eocd = -1;
+  for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 65557); i--) {
+    if (v.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error("not a ZIP file");
+  const count = v.getUint16(eocd + 10, true);
+  let p = v.getUint32(eocd + 16, true);
+  const out = [];
+  for (let n = 0; n < count; n++) {
+    if (v.getUint32(p, true) !== 0x02014b50) throw new Error("damaged ZIP file");
+    const method = v.getUint16(p + 10, true);
+    const csize = v.getUint32(p + 20, true);
+    const nlen = v.getUint16(p + 28, true), xlen = v.getUint16(p + 30, true), clen = v.getUint16(p + 32, true);
+    const local = v.getUint32(p + 42, true);
+    const full = new TextDecoder().decode(new Uint8Array(buf, p + 46, nlen));
+    p += 46 + nlen + xlen + clen;
+    const name = full.split("/").pop();
+    if (!IMAGE.test(name) || name.startsWith(".")) continue;
+    const start = local + 30 + v.getUint16(local + 26, true) + v.getUint16(local + 28, true);
+    const raw = new Uint8Array(buf, start, csize);
+    let data;
+    if (method === 0) {
+      data = raw;
+    } else if (method === 8) {
+      const stream = new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+      data = new Uint8Array(await new Response(stream).arrayBuffer());
+    } else {
+      log(name + ": compressed in a way this page can't unpack", "bad");
+      continue;
+    }
+    out.push({ name, data });
+  }
+  return out;
+}
+
+async function send(files) {
+  for (const file of files) {
+    if (/\.zip$/i.test(file.name)) {
+      try {
+        const disks = await unzip(file);
+        if (!disks.length) log(file.name + ": no .ST or .MSA disk inside", "bad");
+        for (const d of disks) await upload(d.name, d.data);
+      } catch (e) {
+        log(file.name + ": " + e.message, "bad");
+      }
+    } else if (IMAGE.test(file.name)) {
+      await upload(file.name, file);
+    } else {
+      log(file.name + ": not a .ST, .MSA or .ZIP file", "bad");
+    }
+  }
+  refresh();
+}
+
+const drop = $("drop");
+drop.onclick = () => $("pick").click();
+drop.onkeydown = e => { if (e.key === "Enter" || e.key === " ") $("pick").click(); };
+$("pick").onchange = e => { send([...e.target.files]); e.target.value = ""; };
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); send([...e.dataTransfer.files]); };
+document.ondragover = e => e.preventDefault();
+document.ondrop = e => e.preventDefault();
+
+refresh();
+setInterval(refresh, 10000);
+
+/* ---- status ---- */
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const kv = rows => rows.filter(Boolean).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+const bar = (pct, warn = 75, bad = 90) =>
+  `<div class="bar"><i class="${pct >= bad ? "bad" : pct >= warn ? "warn" : ""}" style="width:${Math.min(100, pct)}%"></i></div>`;
+
+function duration(s) {
+  const d = Math.floor(s / 86400), h = Math.floor(s / 3600) % 24, m = Math.floor(s / 60) % 60;
+  return d ? `${d} d ${h} h` : h ? `${h} h ${m} min` : m ? `${m} min ${s % 60} s` : `${s} s`;
+}
+
+function signal(rssi) {
+  const q = rssi >= -55 ? "excellent" : rssi >= -65 ? "good" : rssi >= -75 ? "fair" : "weak";
+  return `${q} (${rssi} dBm)`;
+}
+
+let previous = null;
+
+function drive(letter, on, what, detail) {
+  return `<div class="drive"><span class="led${on ? " on" : ""}"></span><b>${letter}:</b>` +
+         `<span class="what">${what}</span><span class="detail">${detail}</span></div>`;
+}
+
+function showStatus(s) {
+  const m = s.machine;
+  const state = { running: "Running", paused: "Paused: setup screen", setup: "Setup screen",
+                  halted: "Crashed: reset needed" }[m.state];
+  $("state").className = "pill " + (m.state === "halted" ? "offline" : m.state);
+  $("state").textContent = state;
+  $("machine").innerHTML = kv([
+    m.tos && ["System", `TOS ${m.tos}, ${m.ram_kb >= 1024 ? m.ram_kb / 1024 + " MB" : m.ram_kb + " KB"}`],
+    m.tos && ["Screen", `${m.width} × ${m.height}, ${m.colours} colours, ${m.hz} Hz`],
+    m.ram_free !== undefined && ["Free RAM", `${size(m.ram_free)} of ${m.ram_kb >= 1024 ? m.ram_kb / 1024 + " MB" : m.ram_kb + " KB"}` +
+      (m.ram_largest < m.ram_free ? ` <span class="dim">(largest block ${size(m.ram_largest)})</span>` : "") +
+      bar(100 - m.ram_free * 100 / (m.ram_kb * 1024))],
+    m.tos && m.state === "running" && ["Speed", `${m.speed}% <span class="dim">(${m.fps.toFixed(1)} of ${m.hz} frames/s)</span>${bar(m.speed, 101, 101)}`],
+    m.tos && ["Running for", duration(m.session)],
+    !m.tos && ["System", '<span class="dim">not started yet</span>'],
+    ["Clock", m.clock + (m.clock_set ? "" : ' <span class="dim">(not set from the internet)</span>')],
+  ]);
+
+  /* A drive is busy if its counters moved since the last update */
+  const d = s.drives;
+  const out = d.floppy.map((f, i) => {
+    const p = previous && previous.drives.floppy[i];
+    const reading = p && f.reads > p.reads, writing = p && f.writes > p.writes;
+    const busy = writing ? "writing" : reading ? "reading" : "";
+    const what = f.name ? esc(f.name) + (f.read_only ? ' <span class="dim">(read-only)</span>' : "")
+                        : '<span class="dim">no disk</span>';
+    const detail = f.name ? `track ${f.track}${busy ? ", " + busy : ""} · ${f.reads} sectors read, ${f.writes} written` : "";
+    return drive("AB"[i], d.light === i || reading || writing, what, detail);
+  });
+  if (d.hard_disk) {
+    out.push(drive("C", false, "SD card",
+      d.last_file ? `last ${esc(d.last_verb)}: ${esc(d.last_file)}` : "no files used yet"));
+  }
+  $("drives").innerHTML = out.join("");
+
+  const b = s.board;
+  const mb = n => (n / 1048576).toFixed(1) + " MB", kb = n => Math.round(n / 1024) + " KB";
+  $("board").innerHTML = kv([
+    ["WiFi", b.wifi.ssid ? `${esc(b.wifi.ssid)}, ${signal(b.wifi.rssi)}` : '<span class="dim">not connected</span>'],
+    b.wifi.ip && ["Address", `${b.wifi.ip}`],
+    ["Up for", duration(b.uptime)],
+    ["Core 0", `${b.load[0]}% busy <span class="dim">(screen, WiFi, Bluetooth)</span>${bar(b.load[0])}`],
+    ["Core 1", `${b.load[1]}% busy <span class="dim">(68000 emulation)</span>${bar(b.load[1], 101, 101)}`],
+    b.temperature !== null && ["Chip", `${b.temperature.toFixed(0)} °C`],
+    ["Internal RAM", `${kb(b.internal_free)} free <span class="dim">(lowest ${kb(b.internal_min)}, largest block ${kb(b.internal_largest)})</span>`],
+    ["PSRAM", `${mb(b.psram_free)} free of ${mb(b.psram_total)}`],
+    b.sd_total && ["SD card", `${size(b.sd_free)} free of ${size(b.sd_total)}`],
+  ]);
+
+  const kinds = { keyboard: "⌨️", mouse: "🖱️", device: "🔵" };
+  $("bluetooth").innerHTML = s.bluetooth.length ? s.bluetooth.map(dev =>
+    `<div class="dev"><span>${kinds[dev.kind] || ""} ${esc(dev.name)}<br>` +
+    `<span class="dim">${dev.connected ? "connected" : "not connected"}</span></span>` +
+    `<span class="batt">${dev.battery !== null ? "battery " + dev.battery + "%" + bar(dev.battery, 101, 101) : ""}</span></div>`
+  ).join("") : '<span class="dim">No keyboard or mouse paired. Pair them on the setup screen.</span>';
+
+  previous = s;
+}
+
+async function status() {
+  if (document.hidden) return;
+  try {
+    const r = await fetch("/api/status");
+    showStatus(await r.json());
+  } catch (e) {
+    $("state").className = "pill offline";
+    $("state").textContent = "Board not answering";
+  }
+}
+
+status();
+setInterval(status, 1000);
+</script>
+</body>
+</html>

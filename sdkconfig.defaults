@@ -1,0 +1,100 @@
+# Makerfabs MaTouch ESP32-S3 7" — ESP32-S3-WROOM-1-N16R8
+CONFIG_IDF_TARGET="esp32s3"
+
+# CPU
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# Flash: 16 MB QIO
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+
+# Partitions
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# PSRAM: 8 MB octal
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_USE_MALLOC=y
+
+# Code runs from PSRAM. Read-only data stays in flash (850 KB more PSRAM,
+# needed for a 4 MB ST); the 68000 core's opcode tables are copied to PSRAM
+# at start instead (st_config_t.opcode_tables)
+CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
+CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
+
+# FreeRTOS
+CONFIG_FREERTOS_HZ=1000
+
+# Optimise for speed (the emulator core also forces -O2 on its own)
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# Console on the native USB port (USB-Serial-JTAG): fast screen dumps and
+# line commands, see main/console.h
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# The emulator task keeps core 1 busy without idling
+# CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1 is not set
+
+# Recover the RGB panel from bounce-buffer underruns at the next VSYNC
+CONFIG_LCD_RGB_RESTART_IN_VSYNC=y
+
+# BLE HID host (NimBLE central) for keyboard + mouse; runs on core 0 and
+# keeps its buffers in PSRAM. Bonds persist in NVS.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL=y
+CONFIG_BT_NIMBLE_PINNED_TO_CORE_0=y
+CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE=6144
+CONFIG_BT_NIMBLE_ROLE_CENTRAL=y
+CONFIG_BT_NIMBLE_ROLE_OBSERVER=y
+# CONFIG_BT_NIMBLE_ROLE_PERIPHERAL is not set
+# CONFIG_BT_NIMBLE_ROLE_BROADCASTER is not set
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=2
+CONFIG_BT_NIMBLE_MAX_CCCDS=8
+CONFIG_BT_NIMBLE_NVS_PERSIST=y
+CONFIG_BT_CTRL_PINNED_TO_CORE_0=y
+
+# SD card (drive C:): FAT with long file names
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=255
+
+# WiFi (kept connected while the ST runs) next to BLE: software coexistence,
+# WiFi/LWIP buffers in PSRAM to leave internal RAM for the radio drivers
+CONFIG_ESP_COEX_SW_COEXIST_ENABLE=y
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=81920
+
+# LVGL (setup screen): RGB565, its heap in PSRAM (main/lv_mem_psram.c),
+# larger fonts
+CONFIG_LV_COLOR_DEPTH_16=y
+CONFIG_LV_USE_CUSTOM_MALLOC=y
+CONFIG_LV_FONT_MONTSERRAT_24=y
+CONFIG_LV_FONT_MONTSERRAT_28=y
+CONFIG_LV_FONT_DEFAULT_MONTSERRAT_24=y
+
+# The setup screen (LVGL) runs in the main task
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+
+# WiFi reconnects run from a FreeRTOS timer
+CONFIG_FREERTOS_TIMER_TASK_STACK_DEPTH=4096
+
+# Internal RAM is shared by WiFi, BLE and the LCD bounce buffers: keep the
+# WiFi driver code in flash/PSRAM and its static RX buffers few
+# CONFIG_ESP_WIFI_IRAM_OPT is not set
+# CONFIG_ESP_WIFI_RX_IRAM_OPT is not set
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=6
+CONFIG_ESP_WIFI_RX_BA_WIN=6
+
+# Ask for the time right away once online
+# CONFIG_LWIP_SNTP_STARTUP_DELAY is not set
+CONFIG_LWIP_SNTP_MAX_SERVERS=2
+
+# Uploads to the web page: a TCP window of ~11 segments (buffers in PSRAM)
+CONFIG_LWIP_TCP_WND_DEFAULT=16384
+CONFIG_LWIP_TCP_RECVMBOX_SIZE=16
+
+# Core load for the status page (idle tasks' run time, esp_timer clock)
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y

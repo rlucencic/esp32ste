@@ -1,0 +1,177 @@
+menu "Atari STE emulator"
+
+    choice ST_TOS
+        prompt "TOS version"
+        default ST_TOS_162
+        help
+            TOS image to boot, from its flash partition (roms/tosNNN.img).
+
+        config ST_TOS_162
+            bool "TOS 1.62 (tos162 partition)"
+        config ST_TOS_206
+            bool "TOS 2.06 (tos206 partition)"
+    endchoice
+
+    config ST_TOS_PARTITION
+        string
+        default "tos162" if ST_TOS_162
+        default "tos206" if ST_TOS_206
+
+    choice ST_RAM
+        prompt "ST RAM size"
+        default ST_RAM_1MB
+
+        config ST_RAM_512KB
+            bool "512 KB"
+        config ST_RAM_1MB
+            bool "1 MB"
+        config ST_RAM_2MB
+            bool "2 MB"
+        config ST_RAM_4MB
+            bool "4 MB"
+    endchoice
+
+    config ST_RAM_KB
+        int
+        default 512 if ST_RAM_512KB
+        default 1024 if ST_RAM_1MB
+        default 2048 if ST_RAM_2MB
+        default 4096 if ST_RAM_4MB
+
+    config ST_MONO
+        bool "Monochrome monitor (SM124, 640x400)"
+        default n
+        help
+            Without this the ST has a colour monitor (320x200 / 640x200).
+
+    config ST_ANY_RESOLUTION
+        bool "Offer Low, Medium and High resolution"
+        default y
+        help
+            The desktop's Set Preferences offers all three resolutions
+            whatever the monitor (TOS 1.62 and 2.06 are patched in RAM), and
+            the emulated monitor follows the mode TOS sets, like a multisync
+            monitor. Without this, High needs the monochrome monitor and Low
+            and Medium the colour one, as on a real ST.
+
+    config ST_HD
+        bool "SD card as hard disk C:"
+        default y
+        help
+            A folder on the microSD card appears to the ST as drive C:
+            (GEMDOS level: copy .PRG files onto the card from any computer,
+            no disk image or hard disk driver needed).
+
+    config ST_HD_FOLDER
+        string "Folder on the SD card for C:"
+        depends on ST_HD
+        default ""
+        help
+            Relative to the card's root, e.g. "ATARI". Empty: the whole card.
+
+    config ST_HD_BOOT
+        bool "Boot from C:"
+        depends on ST_HD
+        default y
+        help
+            TOS runs C:\AUTO and reads DESKTOP.INF from C:, and skips its
+            wait for an ACSI hard disk.
+
+    config ST_FLOPPY_FOLDER
+        string "Folder on the SD card for floppy disk images"
+        default "floppies"
+        help
+            Relative to the card's root. Disk images (.ST, .MSA) in it can be
+            put into drives A: and B: on the setup screen; new blank disks
+            (EMPTY0001.ST, ...) are made there. Made if missing.
+
+    config ST_WEB
+        bool "Web page for floppy disk images"
+        depends on ST_WIFI
+        default y
+        help
+            A web server on the board (http://<hostname>.local) to upload
+            disk images from a computer into the floppies folder (drag and
+            drop, .ZIP files are unpacked), download and delete them. Also
+            for scripts: curl -T game.st http://atari-ste.local/floppies/
+
+    config ST_HOSTNAME
+        string "Network name of the board"
+        depends on ST_WIFI
+        default "atari-ste"
+        help
+            Announced over mDNS (<name>.local) and DHCP.
+
+    config ST_SPEAKER
+        bool "Sound on the board speaker"
+        default n
+        help
+            Play the ST's sound (YM2149 + STE DMA sound) through the onboard
+            MAX98357A amplifier. Its I2S pins are shared with the native USB
+            port (GPIO19/20), so that port stops working once the emulator
+            starts: the console (logs, tools/st_console.py) moves to the
+            USB-to-UART port at 921600 baud, and flashing goes through that
+            port too.
+
+    config ST_SPEAKER_VOLUME
+        int "Speaker volume (%)"
+        depends on ST_SPEAKER
+        range 0 100
+        default 60
+
+    config ST_WIFI
+        bool "WiFi"
+        default y
+        help
+            Connect to WiFi (stays connected while the ST runs) and set the
+            clock from the internet; the ST's clock follows it.
+
+    config ST_SETUP_SCREEN
+        bool "Setup screen before the ST starts"
+        depends on ST_WIFI
+        default y
+        help
+            Touch screen to choose a WiFi network and see the time. The ST
+            starts by itself shortly after the time is known.
+
+    config ST_AUTOSTART
+        bool "Start the ST by itself"
+        depends on ST_SETUP_SCREEN
+        default n
+        help
+            Leave the setup screen after a countdown once the time is known
+            (or without WiFi set up), for boards nobody is watching. Without
+            this the setup screen waits for Start Atari.
+
+    config ST_AUTOSTART_SECONDS
+        int "Countdown (seconds)"
+        depends on ST_AUTOSTART
+        range 1 60
+        default 5
+
+    config ST_TIMEZONE
+        string "Time zone (POSIX TZ)"
+        depends on ST_WIFI
+        default "CET-1CEST,M3.5.0,M10.5.0/3"
+        help
+            Local time rules, e.g. "CET-1CEST,M3.5.0,M10.5.0/3" for Central
+            Europe or "GMT0BST,M3.5.0/1,M10.5.0" for the UK.
+
+    config ST_BLE_HID
+        bool "BLE keyboard and mouse"
+        default y
+        depends on BT_NIMBLE_ENABLED
+        help
+            Connect a Bluetooth LE keyboard and mouse as the ST's keyboard and
+            mouse. New devices pair when put into pairing mode.
+
+    config ST_MOUSE_DIVIDER
+        int "Mouse speed divider"
+        depends on ST_BLE_HID
+        range 1 8
+        default 2
+        help
+            BLE mouse motion is divided by this before it reaches the ST.
+            Higher is slower.
+
+endmenu

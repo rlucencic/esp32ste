@@ -1,0 +1,11 @@
+build/
+managed_components/
+sdkconfig
+sdkconfig.old
+dependencies.lock
+components/musashi/test/build/
+roms/*.img
+components/atari_st/host/build/
+__pycache__/
+*.ppm
+.DS_Store
