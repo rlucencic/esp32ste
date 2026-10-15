@@ -18,7 +18,7 @@ Makerfabs MaTouch ESP32-S3 Parallel TFT with Touch 7", ESP32-S3-WROOM-1-N16R8:
 microSD (SDMMC 1-bit), MAX98357A I2S amplifier. Pins are in
 `../esp32emu/components/emu/include/emu/board.h`.
 The board's native USB port is the console (USB-Serial-JTAG), port
-`/dev/cu.usbmodem3101` on the user's Mac.
+`/dev/cu.usbmodem1101` on the user's Mac (was `3101` for a while).
 
 ## Build, flash, debug
 
@@ -29,11 +29,15 @@ configured with, so always build like this:
 bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
   export IDF_PYTHON_ENV_PATH=/Users/robertlucencic/.espressif/tools/python/v5.5.4/venv; \
   export PATH=$IDF_PYTHON_ENV_PATH/bin:$PATH; \
-  idf.py build && idf.py -p /dev/cu.usbmodem3101 app-flash'
+  idf.py build && idf.py -p /dev/cu.usbmodem1101 app-flash'
 ```
 
 - `app-flash` writes only the app. `idf.py flash` also writes the TOS images
   from `roms/` (not in the repo) into partitions `tos162` and `tos206`.
+- **The board is shared with the Mac** (`../esp32mac`): its ROM partitions
+  overlap `tos162`/`tos206`, so after the Mac has been on the board, go
+  back with a full `idf.py flash` here (app-flash alone finds no TOS). NVS
+  (WiFi, BLE pairings) is shared, so those survive the switch.
 - After editing `sdkconfig.defaults`, also edit `sdkconfig` (it exists and
   wins), then `idf.py reconfigure`.
 - `../esp32emu/tools/emu_console.py PORT log N | screenshot F.png | lcd F.png | send "cmd" ... | info | reset`.
@@ -134,7 +138,12 @@ See `../esp32emu/README.md` for the API: status, upload / download /
 delete (`/disks/<name>`, `/floppies/<name>` too), insert and eject
 (`/api/drive/<n>`), blank disks. Uploads are limited to 4 MB for the ST.
 mDNS hostname from `CONFIG_EMU_HOSTNAME`. The page unpacks `.zip` in the
-browser (`DecompressionStream`).
+browser (`DecompressionStream`). The page also takes a machine script
+(`web_script`, served as `/machine.js`) that converts other files in the
+browser; the Mac uses it for StuffIt archives, the ST has none. The drop
+area reads "Drop disk images (.ST, .MSA) or .ZIP files here", and the
+setup screen's floppy page "Disk images (.ST, .MSA) from the SD card's
+"floppies" folder." (both reworded for the Mac's longer texts).
 
 ## Memory budget (measured)
 
@@ -205,10 +214,14 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
 
 - `.STX` (Pasti) images are not supported; `.MSA` is read-only.
 - No FPU, no ACSI, no MIDI, no Mega STE features.
-- Musashi changes from the last session are not yet in `patches/` (see its
-  README).
+- Some Musashi changes are not yet in `patches/`: listed in
+  `../esp32emu/components/musashi/README.md`.
+- `docs/images/web.png` and `floppy.png` show the older wording of the drop
+  area and the floppy page (see Web): retake them when the ST is on the
+  board again (`../esp32emu/CLAUDE.md`, README screenshots).
 - Floppy timing is about 10x faster than a real drive (2 ms per sector).
-- Not a git repository yet. Licence: MIT (`LICENSE`), like Musashi.
+- Public on GitHub (`github.com/rlucencic/esp32ste`, pushed to `main`).
+  Licence: MIT (`LICENSE`), like Musashi.
 
 ## Working with the user
 
