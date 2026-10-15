@@ -93,7 +93,7 @@ void st_bus_error(uint32_t address, bool write)
  * (Getmpb, trap #13 function 0): remember where it is, to read the free
  * memory list from it
  */
-void st_exception(unsigned int vector)
+void m68k_host_exception(unsigned int vector)
 {
     if (vector != 45 || st.mpb != 0) {
         return;
@@ -128,7 +128,7 @@ bool st_ram_free(uint32_t *total, uint32_t *largest)
 }
 
 /* Double bus fault: the 68000 stops until the next reset */
-void st_cpu_halted(void)
+void m68k_host_halted(void)
 {
     if (st.halted) {
         return;

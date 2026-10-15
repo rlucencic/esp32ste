@@ -1,6 +1,6 @@
 # Host build of the STE core: make -C components/atari_st/host run TOS=roms/tos162.img
 ROOT      := ../../..
-MUSASHI   := ../../musashi
+MUSASHI   := ../../../../esp32emu/components/musashi
 ST        := ..
 BUILD     := build
 CFLAGS    := -O2 -g -Wall -DM68K_INSTRUCTION_HOOK=2 -I$(ST)/include -I$(ST) -I$(MUSASHI) -I$(MUSASHI)/musashi -I$(MUSASHI)/generated

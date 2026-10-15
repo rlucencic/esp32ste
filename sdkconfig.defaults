@@ -98,3 +98,6 @@ CONFIG_LWIP_TCP_RECVMBOX_SIZE=16
 
 # Core load for the status page (idle tasks' run time, esp_timer clock)
 CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
+
+# The board runtime (../esp32emu): network name
+CONFIG_EMU_HOSTNAME="atari-ste"

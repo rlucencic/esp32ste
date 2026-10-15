@@ -1,297 +1,40 @@
 /*
  * Atari STE emulator on the Makerfabs MaTouch ESP32-S3 7".
  *
- *   core 1: emulation, paced to the ST frame rate
- *   core 0: LCD presenter, serial console, setup screen (also on demand:
- *           long-press the top-right corner while the ST runs)
+ * The board side (tasks, LCD, touch, WiFi, Bluetooth, setup screen, web
+ * page, console) is the shared runtime in ../esp32emu; this file plugs the
+ * STE into it: memory, TOS, settings, keyboard map, disks and status.
  */
-#include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_attr.h"
 #include "esp_heap_caps.h"
-#include "esp_system.h"
 #include "esp_log.h"
-#include "esp_timer.h"
-#include "nvs_flash.h"
-#include "ble_hid.h"
-#include "board.h"
-#include "console.h"
-#include "driver/temperature_sensor.h"
-#include "emulator.h"
-#include "floppies.h"
-#include "lcd.h"
-#include "net.h"
-#include "sdcard.h"
+#include "emu/console.h"
+#include "emu/emu.h"
+#include "emu/sdcard.h"
 #include "settings.h"
-#include "setup_ui.h"
-#include "speaker.h"
 #include "st.h"
 #include "tos_rom.h"
-#include "touch.h"
-#if CONFIG_ST_WEB
-#include "web.h"
-#endif
-
-/* ST picture area on the panel: 960x600, centred */
-#define VIEW_W          960
-#define VIEW_H          BOARD_LCD_V_RES
-#define VIEW_X          ((BOARD_LCD_H_RES - VIEW_W) / 2)
-#define PRESENT_MS      40
-
-/* Long-press here (top-right corner, mostly the black border) for setup */
-#define SETUP_ZONE_X    (BOARD_LCD_H_RES - 100)
-#define SETUP_ZONE_Y    100
-#define SETUP_HOLD_MS   2000
 
 static const char *TAG = "main";
 
-static volatile bool reset_requested;
-static volatile uint32_t emu_frames;     /* written by the emulator task only */
-
-/* Pausing the emulator for the setup screen */
-static volatile bool s_pause_request;
-static volatile bool s_paused;
-static volatile bool s_present_on = true;
-static bool s_started;                  /* the emulator task runs */
-
 static st_config_t s_cfg;
+static uint16_t s_tos_version;      /* of the running TOS, e.g. 0x0206 */
 
-/* Set before restarting the board for a bigger ST RAM: start the ST right
- * away afterwards instead of showing the setup screen (survives a restart)
- */
-#define START_AFTER_RESTART     0x53544152u
-static RTC_NOINIT_ATTR uint32_t s_start_after_restart;
-static emu_info_t s_info = { .temperature = NAN };
-static int64_t s_session_start;
-static uint16_t *s_fb;
-static char s_drive_info[64];
-
-void emulator_request_reset(void)
-{
-    reset_requested = true;
-}
-
-static void emulator_task(void *arg)
-{
-    int64_t next = esp_timer_get_time();
-
-    for (;;) {
-        if (s_pause_request) {
-            s_paused = true;
-            while (s_pause_request) {
-                vTaskDelay(pdMS_TO_TICKS(10));
-            }
-            s_paused = false;
-            next = esp_timer_get_time();
-        }
-        if (reset_requested) {
-            reset_requested = false;
-            st_reset();
-        }
-        st_run_frame();
-        emu_frames++;
-
-#if CONFIG_ST_SPEAKER
-        /* The speaker's I2S clock sets the pace: stay ~2 frames ahead of it */
-        while (st_audio_pending() > ST_AUDIO_HZ / 25 && !s_pause_request) {
-            vTaskDelay(1);
-        }
-        (void)next;
-#else
-        st_screen_mode_t mode;
-        st_get_screen_mode(&mode);
-        next += 1000000 / mode.hz;
-        int64_t now = esp_timer_get_time();
-        if (next > now) {
-            vTaskDelay(pdMS_TO_TICKS((next - now) / 1000));
-        } else if (now - next > 100000) {
-            next = now;     /* too far behind: don't try to catch up */
-        }
-#endif
-    }
-}
-
-/* GEM (re)started in a resolution: remembered for the next boot. Called
- * from the emulator task; the NVS write happens in stats_task.
- */
-static volatile int8_t s_desktop_rez = -2;
-
-static void resolution_changed(int rez)
-{
-    s_desktop_rez = rez;
-}
-
-void emulator_info(emu_info_t *info)
-{
-    *info = s_info;
-    info->state = !s_started ? EMU_SETUP : s_paused ? EMU_PAUSED : EMU_RUNNING;
-    if (info->state == EMU_RUNNING) {
-        st_status_t s;
-        st_get_status(&s);
-        if (s.halted) {
-            info->state = EMU_HALTED;
-        }
-    }
-    info->session_s = s_started ? (esp_timer_get_time() - s_session_start) / 1000000 : 0;
-}
-
-/* The chip temperature, on request (the status page): reading the sensor
- * blocks interrupts on the reading core for a moment, which on core 0 made
- * the LCD's bounce buffer refill late (picture artefacts). So it's read on
- * core 1, above the emulator's priority, with the sensor powered only
- * while it's read.
- */
-#define TEMPERATURE_EVERY_US    5000000
-
-static TaskHandle_t s_temperature_task;
-
-static void temperature_task(void *arg)
-{
-    temperature_sensor_handle_t tsens = NULL;
-    temperature_sensor_config_t tcfg = TEMPERATURE_SENSOR_CONFIG_DEFAULT(-10, 80);
-    if (temperature_sensor_install(&tcfg, &tsens) != ESP_OK) {
-        vTaskDelete(NULL);
-    }
-    for (;;) {
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        float celsius;
-        if (temperature_sensor_enable(tsens) == ESP_OK) {
-            if (temperature_sensor_get_celsius(tsens, &celsius) == ESP_OK) {
-                s_info.temperature = celsius;
-            }
-            temperature_sensor_disable(tsens);
-        }
-    }
-}
-
-void emulator_measure_temperature(void)
-{
-    static int64_t last;
-    int64_t now = esp_timer_get_time();
-    if (s_temperature_task != NULL && (last == 0 || now - last >= TEMPERATURE_EVERY_US)) {
-        last = now;
-        xTaskNotifyGive(s_temperature_task);
-    }
-}
-
-/* Every second: speed and core loads (from the idle tasks' run time) for
- * emulator_info(); the speed also goes to the log every 5 s (from core 0,
- * so a slow console never holds up the emulator). Also saves a changed
- * desktop resolution.
- */
-static void stats_task(void *arg)
-{
-    uint32_t last_frames = emu_frames;
-    int64_t last = esp_timer_get_time();
-    uint32_t last_idle[2] = { ulTaskGetIdleRunTimeCounterForCore(0),
-                              ulTaskGetIdleRunTimeCounterForCore(1) };
-    for (int tick = 1;; tick++) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        int8_t rez = s_desktop_rez;
-        if (rez >= 0 && rez != settings.resolution) {
-            settings.resolution = rez;
-            settings_save();
-        }
-
-        uint32_t frames = emu_frames;
-        int64_t now = esp_timer_get_time();
-        float elapsed = now - last;
-        for (int core = 0; core < 2; core++) {
-            uint32_t idle = ulTaskGetIdleRunTimeCounterForCore(core);
-            float busy = 100.0f - (idle - last_idle[core]) * 100.0f / elapsed;
-            s_info.load[core] = busy < 0 ? 0 : busy > 100 ? 100 : busy;
-            last_idle[core] = idle;
-        }
-
-        if (s_started && !s_paused) {
-            st_screen_mode_t mode;
-            st_get_screen_mode(&mode);
-            s_info.fps = (frames - last_frames) * 1e6f / elapsed;
-            s_info.speed = (int)(s_info.fps * 100 / mode.hz + 0.5f);
-            if (tick % 5 == 0) {
-                st_status_t s;
-                st_get_status(&s);
-                ESP_LOGI(TAG, "%.1f fps (%d%% of %d Hz), PC $%06lx, hz_200 %lu, bus errors %lu",
-                         s_info.fps, s_info.speed, mode.hz, (unsigned long)s.pc,
-                         (unsigned long)s.hz_200, (unsigned long)s.bus_errors);
-            }
-        } else {
-            s_info.fps = 0;
-            s_info.speed = 0;
-        }
-        last_frames = frames;
-        last = now;
-    }
-}
-
-/* Scale the ST screen to 960x600: low res x3, medium x1.5/x3, high x1.5 */
-static void present_task(void *arg)
-{
-    uint16_t *fb = arg;
-    uint16_t *src = heap_caps_malloc(640 * sizeof(uint16_t), MALLOC_CAP_INTERNAL);
-    uint16_t *row = heap_caps_malloc(VIEW_W * sizeof(uint16_t), MALLOC_CAP_INTERNAL);
-    static uint16_t xmap[VIEW_W];
-    uint32_t last_signature = 0;
-    int last_width = 0;
-
-    for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(PRESENT_MS));
-        if (!s_present_on) {
-            last_signature = 0;     /* redraw everything afterwards */
-            continue;
-        }
-
-        uint32_t signature = st_screen_signature();
-        if (signature == last_signature) {
-            continue;
-        }
-        last_signature = signature;
-
-        st_screen_mode_t mode;
-        st_get_screen_mode(&mode);
-        if (mode.width != last_width) {
-            for (int x = 0; x < VIEW_W; x++) {
-                xmap[x] = x * mode.width / VIEW_W;
-            }
-            last_width = mode.width;
-        }
-
-        int last_y = -1;
-        for (int r = 0; r < VIEW_H; r++) {
-            int y = r * mode.height / VIEW_H;
-            if (y != last_y) {
-                st_render_line_rgb565(y, src);
-                for (int x = 0; x < VIEW_W; x++) {
-                    row[x] = src[xmap[x]];
-                }
-                last_y = y;
-            }
-            memcpy(fb + r * BOARD_LCD_H_RES + VIEW_X, row, VIEW_W * sizeof(uint16_t));
-        }
-    }
-}
-
-/* (Re)start the ST with the current settings (TOS, RAM). The emulator task
- * must not be running a frame.
- */
-/* The ST's RAM and ROM copy, first thing at power-on: 4 MB must be one
+/* ---- Memory ----
+ *
+ * The ST's RAM and ROM copy, first thing at power-on: 4 MB must be one
  * block of PSRAM, which it no longer is once the screen, WiFi and Bluetooth
- * have taken their pieces
- */
-/* PSRAM the rest of the board needs: screen buffer (1.2 MB), ROM copy,
- * WiFi, Bluetooth, the setup screen: 1.7 MB measured at most, plus room
+ * have taken their pieces. PSRAM the rest of the board needs: screen buffer
+ * (1.2 MB), WiFi, Bluetooth, the setup screen: 1.7 MB measured at most,
+ * plus room.
  */
 #define PSRAM_FOR_THE_REST      (2048 * 1024)
 
 static uint16_t s_ram_limit_kb = 512;      /* the most ST RAM that fits */
-
-uint16_t emulator_ram_limit_kb(void)
-{
-    return s_ram_limit_kb;
-}
 
 /* ST RAM to use: the setting, or less if that doesn't fit */
 static uint32_t ram_wanted(void)
@@ -300,8 +43,10 @@ static uint32_t ram_wanted(void)
     return kb * 1024u;
 }
 
-static void machine_memory(void)
+static void reserve_memory(void)
 {
+    settings_load();
+
     /* The CPU core's opcode tables, read for every instruction: from PSRAM,
      * not flash (read-only data stays in flash to leave room for 4 MB)
      */
@@ -324,12 +69,71 @@ static void machine_memory(void)
     s_cfg.ram = heap_caps_malloc(ram_size, MALLOC_CAP_SPIRAM);
     s_cfg.ram_size = ram_size;
     s_cfg.rom = heap_caps_malloc(256 * 1024, MALLOC_CAP_SPIRAM);
+
+#if CONFIG_ST_MONO
+    s_cfg.monitor = ST_MONITOR_MONO;
+#else
+    s_cfg.monitor = ST_MONITOR_COLOR;
+#endif
+#if CONFIG_ST_ANY_RESOLUTION
+    s_cfg.any_resolution = true;
+#endif
+#if CONFIG_ST_HD_BOOT
+    s_cfg.hd_boot = true;
+#endif
 }
 
-static bool machine_start(void)
+/* The SD card is drive C: (all of it, or a folder) */
+static void storage(bool sd)
+{
+    const char *hd = NULL;
+#if CONFIG_ST_HD
+    static char hd_path[128];
+    if (sd) {
+        snprintf(hd_path, sizeof(hd_path), "%s%s%s", SDCARD_MOUNT_POINT,
+                 CONFIG_ST_HD_FOLDER[0] ? "/" : "", CONFIG_ST_HD_FOLDER);
+        hd = hd_path;
+    }
+#endif
+    s_cfg.hd_path = hd;
+    emu_set_drive_info(hd ? "Hard disk C: on the SD card" :
+                       sd ? "SD card: floppy disks only" : "No SD card: no hard disk or floppy disks");
+}
+
+/* For the ST's Dfree() on drive C: */
+bool st_host_disk_free(const char *path, uint64_t *total, uint64_t *free_bytes)
+{
+    return sdcard_space(total, free_bytes);
+}
+
+/* GEM (re)started in a resolution: remembered for the next boot. Called
+ * from the emulation task; the NVS write happens in every_second().
+ */
+static volatile int8_t s_desktop_rez = -2;
+
+static void resolution_changed(int rez)
+{
+    s_desktop_rez = rez;
+}
+
+static void every_second(void)
+{
+    int8_t rez = s_desktop_rez;
+    if (rez >= 0 && rez != settings.resolution) {
+        settings.resolution = rez;
+        settings_save();
+    }
+}
+
+/* (Re)start the ST with the current settings (TOS, RAM); the emulation is
+ * paused or not started yet
+ */
+static bool start(void)
 {
     tos_rom_t tos;
     if (tos_rom_map(settings_tos_partition(), &tos) != ESP_OK) {
+        emu_set_message(settings.tos ? "No TOS 2.06 in flash: flash roms/tos206.img with idf.py flash."
+                                     : "No TOS 1.62 in flash: flash roms/tos162.img with idf.py flash.");
         return false;
     }
     uint32_t ram_size = ram_wanted();
@@ -343,20 +147,18 @@ static bool machine_start(void)
             ESP_LOGW(TAG, "no %u KB block for the ST RAM now: restarting the board",
                      (unsigned)(ram_size / 1024));
             tos_rom_unmap(&tos);
-            s_start_after_restart = START_AFTER_RESTART;
-            esp_restart();
+            emu_reboot_into_machine();
         }
         s_cfg.ram_size = ram_size;
     }
     s_cfg.tos = tos.data;
     s_cfg.tos_size = tos.size;
     s_cfg.start_resolution = settings.resolution;
+    s_cfg.resolution_changed = resolution_changed;
 
     bool ok = s_cfg.ram != NULL && s_cfg.rom != NULL && st_init(&s_cfg);
     if (ok) {
-        s_info.tos_version = tos.version;
-        s_info.ram_kb = s_cfg.ram_size / 1024;
-        s_session_start = esp_timer_get_time();
+        s_tos_version = tos.version;
     }
     tos_rom_unmap(&tos);    /* st_init copied it */
     s_cfg.tos = NULL;
@@ -366,221 +168,318 @@ static bool machine_start(void)
     return ok;
 }
 
-/* Stop the emulator task between frames (and the presenter) */
-static void emulator_pause(void)
+static bool halted(void)
 {
-    s_present_on = false;
-    s_pause_request = true;
-    while (!s_paused) {
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
+    st_status_t s;
+    st_get_status(&s);
+    return s.halted;
 }
 
-static void emulator_resume(void)
+static void screen_mode(emu_screen_t *mode)
 {
-    s_present_on = true;
-    s_pause_request = false;
+    st_screen_mode_t m;
+    st_get_screen_mode(&m);
+    mode->width = m.width;
+    mode->height = m.height;
+    mode->hz = m.hz;
 }
 
-/* Restart the paused ST if TOS or RAM differ from `before` */
-static void restart_if_changed(const settings_t *before)
+/* ---- Keyboard and mouse ---- */
+
+/* HID keyboard usages 0x00-0x67 (US positions). 0 = no ST key. */
+static const uint8_t usage_to_st[0x68] = {
+    [0x04] = 0x1E, [0x05] = 0x30, [0x06] = 0x2E, [0x07] = 0x20,     /* a b c d */
+    [0x08] = 0x12, [0x09] = 0x21, [0x0A] = 0x22, [0x0B] = 0x23,     /* e f g h */
+    [0x0C] = 0x17, [0x0D] = 0x24, [0x0E] = 0x25, [0x0F] = 0x26,     /* i j k l */
+    [0x10] = 0x32, [0x11] = 0x31, [0x12] = 0x18, [0x13] = 0x19,     /* m n o p */
+    [0x14] = 0x10, [0x15] = 0x13, [0x16] = 0x1F, [0x17] = 0x14,     /* q r s t */
+    [0x18] = 0x16, [0x19] = 0x2F, [0x1A] = 0x11, [0x1B] = 0x2D,     /* u v w x */
+    [0x1C] = 0x15, [0x1D] = 0x2C,                                   /* y z */
+    [0x1E] = 0x02, [0x1F] = 0x03, [0x20] = 0x04, [0x21] = 0x05,     /* 1 2 3 4 */
+    [0x22] = 0x06, [0x23] = 0x07, [0x24] = 0x08, [0x25] = 0x09,     /* 5 6 7 8 */
+    [0x26] = 0x0A, [0x27] = 0x0B,                                   /* 9 0 */
+    [0x28] = 0x1C,      /* Return */
+    [0x29] = 0x01,      /* Esc */
+    [0x2A] = 0x0E,      /* Backspace */
+    [0x2B] = 0x0F,      /* Tab */
+    [0x2C] = 0x39,      /* Space */
+    [0x2D] = 0x0C,      /* - */
+    [0x2E] = 0x0D,      /* = */
+    [0x2F] = 0x1A,      /* [ */
+    [0x30] = 0x1B,      /* ] */
+    [0x31] = 0x2B,      /* \ */
+    [0x32] = 0x2B,      /* non-US # */
+    [0x33] = 0x27,      /* ; */
+    [0x34] = 0x28,      /* ' */
+    [0x35] = 0x29,      /* ` */
+    [0x36] = 0x33,      /* , */
+    [0x37] = 0x34,      /* . */
+    [0x38] = 0x35,      /* / */
+    [0x39] = 0x3A,      /* Caps Lock */
+    [0x3A] = 0x3B, [0x3B] = 0x3C, [0x3C] = 0x3D, [0x3D] = 0x3E,     /* F1-F4 */
+    [0x3E] = 0x3F, [0x3F] = 0x40, [0x40] = 0x41, [0x41] = 0x42,     /* F5-F8 */
+    [0x42] = 0x43, [0x43] = 0x44,                                   /* F9 F10 */
+    [0x44] = 0x61,      /* F11 -> Undo */
+    [0x45] = 0x62,      /* F12 -> Help */
+    [0x49] = 0x52,      /* Insert */
+    [0x4A] = 0x47,      /* Home -> Clr/Home */
+    [0x4B] = 0x62,      /* Page Up -> Help */
+    [0x4C] = 0x53,      /* Delete */
+    [0x4E] = 0x61,      /* Page Down -> Undo */
+    [0x4F] = 0x4D,      /* Right */
+    [0x50] = 0x4B,      /* Left */
+    [0x51] = 0x50,      /* Down */
+    [0x52] = 0x48,      /* Up */
+    [0x53] = 0x63,      /* Num Lock -> keypad ( */
+    [0x54] = 0x65,      /* keypad / */
+    [0x55] = 0x66,      /* keypad * */
+    [0x56] = 0x4A,      /* keypad - */
+    [0x57] = 0x4E,      /* keypad + */
+    [0x58] = 0x72,      /* keypad Enter */
+    [0x59] = 0x6D, [0x5A] = 0x6E, [0x5B] = 0x6F,                    /* keypad 1 2 3 */
+    [0x5C] = 0x6A, [0x5D] = 0x6B, [0x5E] = 0x6C,                    /* keypad 4 5 6 */
+    [0x5F] = 0x67, [0x60] = 0x68, [0x61] = 0x69,                    /* keypad 7 8 9 */
+    [0x62] = 0x70,      /* keypad 0 */
+    [0x63] = 0x71,      /* keypad . */
+    [0x64] = 0x60,      /* non-US \ (ISO key left of Z) */
+    [0x67] = 0x64,      /* keypad = -> keypad ) */
+};
+
+/* Modifier usages $E0-$E7: LCtrl LShift LAlt LGUI RCtrl RShift RAlt RGUI */
+static const uint8_t modifier_to_st[8] = { 0x1D, 0x2A, 0x38, 0, 0x1D, 0x36, 0x38, 0 };
+
+static uint8_t s_modifiers;     /* modifier usages held, bit n = $E0 + n */
+
+static void hid_key(uint8_t usage, bool pressed)
 {
-    if (settings.tos != before->tos || settings.ram_kb != before->ram_kb) {
-        ESP_LOGI(TAG, "restarting the ST: TOS %s, %u KB", settings.tos ? "2.06" : "1.62",
-                 (unsigned)settings.ram_kb);
-        if (!machine_start()) {
-            /* e.g. that TOS partition was never flashed: back to the old one */
-            settings.tos = before->tos;
-            settings_save();
-            machine_start();
+    if (usage >= 0xE0 && usage <= 0xE7) {
+        /* ST Control and Alternate have one key each: down while either side is */
+        int bit = usage - 0xE0;
+        uint8_t code = modifier_to_st[bit];
+        uint8_t mask = 0;
+        for (int i = 0; i < 8; i++) {
+            mask |= modifier_to_st[i] == code ? 1u << i : 0;
         }
-    }
-}
-
-void emulator_restart(int tos, int ram_kb)
-{
-    if (!s_started || s_pause_request || tos < 0 || tos > 1 ||
-        (ram_kb != 512 && ram_kb != 1024 && ram_kb != 2048 && ram_kb != 4096)) {
+        bool was = (s_modifiers & mask) != 0;
+        s_modifiers = pressed ? s_modifiers | (1u << bit) : s_modifiers & ~(1u << bit);
+        bool now = (s_modifiers & mask) != 0;
+        if (code && was != now) {
+            st_ikbd_key(code, now);
+        }
         return;
     }
-    emulator_pause();
-    settings_t before = settings;
-    settings.tos = tos;
-    settings.ram_kb = ram_kb;
+    if (usage < sizeof(usage_to_st) && usage_to_st[usage]) {
+        st_ikbd_key(usage_to_st[usage], pressed);
+    }
+}
+
+static void hid_mouse(int dx, int dy, uint8_t buttons)
+{
+    st_ikbd_mouse(dx, dy, buttons & 0x01, buttons & 0x02);
+}
+
+/* ---- Setup screen choices ---- */
+
+static const char *const tos_names[] = { "TOS 1.62", "TOS 2.06", "" };
+static const char *const ram_names[] = { "512 KB", "1 MB", "4 MB", "" };
+static const uint16_t ram_sizes[] = { 512, 1024, 4096 };
+
+static int tos_get(void)
+{
+    return settings.tos;
+}
+
+static void tos_set(int i)
+{
+    settings.tos = i ? 1 : 0;
     settings_save();
-    restart_if_changed(&before);
-    emulator_resume();
 }
 
-/* Console: insert `name` from the floppies folder, "" ejects, "+" makes a
- * new blank disk
- */
-void emulator_floppy(int drive, const char *name)
+static int ram_get(void)
 {
-    if (drive < 0 || drive > 1 || (s_started && s_pause_request)) {
+    return settings.ram_kb >= 4096 ? 2 : settings.ram_kb >= 1024 ? 1 : 0;
+}
+
+static void ram_set(int i)
+{
+    if (i >= 0 && i < 3) {
+        settings.ram_kb = ram_sizes[i];
+        settings_save();
+    }
+}
+
+static const emu_choice_t choices[] = {
+    { "System", tos_names, tos_get, tos_set },
+    { "Memory", ram_names, ram_get, ram_set },
+};
+
+/* ---- Floppy disks ---- */
+
+static const char *const extensions[] = { ".st", ".msa", NULL };
+static const char *const drive_names[] = { "A:", "B:" };
+static const disks_size_t sizes[] = { { 737280, "720 KB" } };
+
+static bool floppy_create(const char *path, uint32_t bytes)
+{
+    return st_floppy_create(path);
+}
+
+/* An .MSA image's unpacked copy goes with it */
+static void floppy_removed(const char *path)
+{
+    char copy[200];
+    st_floppy_unpacked_path(path, copy, sizeof(copy));
+    remove(copy);
+}
+
+static const disks_config_t disks = {
+    .folder = CONFIG_ST_FLOPPY_FOLDER,
+    .extensions = extensions,
+    .description = "Disk images (.ST, .MSA)",
+    .title = "Floppy disks",
+    .button = "Floppy",
+    .nvs_namespace = "floppy",
+    .drives = 2,
+    .drive_names = drive_names,
+    .new_prefix = "EMPTY",
+    .new_extension = ".ST",
+    .sizes = sizes,
+    .size_count = 1,
+    .max_upload = 4 * 1024 * 1024,
+    .insert = st_floppy_insert,
+    .eject = st_floppy_eject,
+    .path = st_floppy_path,
+    .write_protected = st_floppy_write_protected,
+    .create = floppy_create,
+    .removed = floppy_removed,
+};
+
+/* ---- Status ---- */
+
+static void status(emu_json_t *j, int section)
+{
+    char text[160];
+    if (section == EMU_STATUS_ROWS) {
+        uint16_t ram_kb = s_cfg.ram_size / 1024;
+        char ram[16];
+        snprintf(ram, sizeof(ram), ram_kb >= 1024 ? "%u MB" : "%u KB",
+                 ram_kb >= 1024 ? ram_kb / 1024 : ram_kb);
+        snprintf(text, sizeof(text), "TOS %x.%02x, %s", s_tos_version >> 8, s_tos_version & 0xFF, ram);
+        emu_json_row(j, "System", text);
+        st_screen_mode_t mode;
+        st_get_screen_mode(&mode);
+        snprintf(text, sizeof(text), "%d × %d, %d colours, %d Hz", mode.width, mode.height,
+                 1 << mode.planes, mode.hz);
+        emu_json_row(j, "Screen", text);
+        uint32_t ram_free, ram_largest;
+        if (st_ram_free(&ram_free, &ram_largest)) {
+            int len = snprintf(text, sizeof(text), "%lu KB of %s", (unsigned long)(ram_free / 1024), ram);
+            if (ram_largest < ram_free) {
+                snprintf(text + len, sizeof(text) - len, " <span class=\"dim\">(largest block %lu KB)</span>",
+                         (unsigned long)(ram_largest / 1024));
+            }
+            emu_json_row_bar(j, "Free RAM", text, 100 - (int)((uint64_t)ram_free * 100 / s_cfg.ram_size));
+        }
         return;
     }
-    if (s_started) {
-        emulator_pause();
+    st_floppy_status_t fs;
+    st_floppy_status(&fs);
+    for (int d = 0; d < 2; d++) {
+        const char *name = disks_name(d);
+        snprintf(text, sizeof(text), "track %d", fs.track[d]);
+        emu_json_drive(j, drive_names[d], name, st_floppy_write_protected(d), fs.light == d,
+                       fs.reads[d], fs.writes[d], name ? text : NULL);
     }
-    char made[32];
-    if (name[0] == 0) {
-        floppies_eject(drive);
-    } else if (strcmp(name, "+") == 0) {
-        floppies_create(drive, made, sizeof(made));
-    } else {
-        floppies_insert(drive, name);
-    }
-    if (s_started) {
-        emulator_resume();
-    }
-}
-
-#if CONFIG_ST_SETUP_SCREEN
-
-/* Pause the ST, show the setup screen, restart the ST if TOS or RAM changed */
-static void setup_while_running(void)
-{
-    emulator_pause();
-    settings_t before = settings;
-    bool reset = setup_ui_run(s_fb, s_drive_info, true);
-    restart_if_changed(&before);
-    if (reset) {
-        st_reset();     /* the emulator task is paused: safe here */
-    }
-    emulator_resume();
-}
-
-/* Watch for a long press in the top-right corner */
-static void supervisor_task(void *arg)
-{
-    int64_t held_since = 0;
-    for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(50));
-        int x = 0, y = 0;
-        bool pressed = false;
-        touch_read(&x, &y, &pressed);
-        if (!pressed || x < SETUP_ZONE_X || y > SETUP_ZONE_Y) {
-            held_since = 0;
-            continue;
+    if (s_cfg.hd_path != NULL) {
+        char last[100];
+        const char *verb = st_hd_last_file(last, sizeof(last));
+        if (verb) {
+            snprintf(text, sizeof(text), "last %s: %s", verb, last);
         }
-        int64_t now = esp_timer_get_time();
-        if (held_since == 0) {
-            held_since = now;
-        } else if (now - held_since >= SETUP_HOLD_MS * 1000LL) {
-            held_since = 0;
-            /* Wait for the finger to lift so the setup screen doesn't see it */
-            do {
-                vTaskDelay(pdMS_TO_TICKS(50));
-                touch_read(&x, &y, &pressed);
-            } while (pressed);
-            setup_while_running();
-        }
+        emu_json_drive(j, "C:", "SD card", false, false, 0, 0, verb ? text : "no files used yet");
     }
 }
 
-#endif
+/* ---- Console ---- */
+
+static void console_info(char *buf, size_t len)
+{
+    st_status_t s;
+    st_get_status(&s);
+    uint32_t v_bas_ad = ((uint32_t)st_peek16(0x44E) << 16) | st_peek16(0x450);
+    snprintf(buf, len, "frames %lu PC $%06lx SR $%04x hz_200 %lu v_bas_ad $%06lx bus errors %lu",
+             (unsigned long)s.frames, (unsigned long)s.pc, s.sr, (unsigned long)s.hz_200,
+             (unsigned long)v_bas_ad, (unsigned long)s.bus_errors);
+}
+
+/*   k <hex scancode>   tap a key
+ *   m <dx> <dy> <btn>  move the mouse, btn bit 0 left, bit 1 right
+ *   R <tos> <ram KB>   restart with TOS 0 = 1.62, 1 = 2.06 and that much RAM
+ */
+static bool console_command(const char *line)
+{
+    switch (line[0]) {
+    case 'k': {
+        unsigned code = strtoul(line + 1, NULL, 16);
+        st_ikbd_key(code, true);
+        vTaskDelay(pdMS_TO_TICKS(60));
+        st_ikbd_key(code, false);
+        return true;
+    }
+    case 'm': {
+        int dx = 0, dy = 0, buttons = 0;
+        sscanf(line + 1, "%d %d %d", &dx, &dy, &buttons);
+        st_ikbd_mouse(dx, dy, buttons & 1, buttons & 2);
+        return true;
+    }
+    case 'R': {
+        int tos = 0, ram_kb = 0;
+        if (sscanf(line + 1, "%d %d", &tos, &ram_kb) == 2 && (tos == 0 || tos == 1) &&
+            (ram_kb == 512 || ram_kb == 1024 || ram_kb == 2048 || ram_kb == 4096)) {
+            settings.tos = tos;
+            settings.ram_kb = ram_kb;
+            settings_save();
+            emu_restart();
+        }
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
+/* ---- The machine ---- */
+
+static const emu_machine_t machine = {
+    .name = "Atari STE",
+    .short_name = "Atari",
+    .view_width = 960,
+    .scale = EMU_SCALE_NEAREST,
+    .reserve_memory = reserve_memory,
+    .storage = storage,
+    .start = start,
+    .reset = st_reset,
+    .run_frame = st_run_frame,
+    .halted = halted,
+    .screen_mode = screen_mode,
+    .screen_signature = st_screen_signature,
+    .render_line = st_render_line_rgb565,
+    .audio_hz = ST_AUDIO_HZ,
+    .audio_enable = st_audio_enable,
+    .audio_render = st_audio_render,
+    .audio_pending = st_audio_pending,
+    .hid_key = hid_key,
+    .hid_mouse = hid_mouse,
+    .choices = choices,
+    .choice_count = 2,
+    .disks = &disks,
+    .status = status,
+    .console_info = console_info,
+    .console_command = console_command,
+    .every_second = every_second,
+};
 
 void app_main(void)
 {
-    esp_err_t err = nvs_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        nvs_flash_erase();
-        err = nvs_flash_init();
-    }
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "NVS init failed: %s", esp_err_to_name(err));
-    }
-
-    settings_load();
-    bool start_now = s_start_after_restart == START_AFTER_RESTART;
-    s_start_after_restart = 0;
-    machine_memory();
-
-    const char *hd = NULL;
-    bool sd = sdcard_mount();
-#if CONFIG_ST_HD
-    static char hd_path[128];
-    if (sd) {
-        snprintf(hd_path, sizeof(hd_path), "%s%s%s", SDCARD_MOUNT_POINT,
-                 CONFIG_ST_HD_FOLDER[0] ? "/" : "", CONFIG_ST_HD_FOLDER);
-        hd = hd_path;
-    }
-#endif
-    s_info.hard_disk = hd != NULL;
-    if (sd) {
-        floppies_init();
-        floppies_restore();     /* before the ST starts: a disk in A: boots */
-    }
-    snprintf(s_drive_info, sizeof(s_drive_info), "%s",
-             hd ? "Hard disk C: on the SD card" :
-             sd ? "SD card: floppy disks only" : "No SD card: no hard disk or floppy disks");
-
-    s_fb = lcd_init();
-    if (s_fb != NULL) {
-        memset(s_fb, 0, BOARD_LCD_H_RES * BOARD_LCD_V_RES * sizeof(uint16_t));
-    }
-    touch_init();
-    console_start(s_fb);
-
-#if CONFIG_ST_WIFI
-    bool net = net_init();  /* before BLE: WiFi needs the larger internal RAM blocks */
-#endif
-#if CONFIG_ST_WEB
-    if (net) {
-        web_start();
-    }
-#endif
-#if CONFIG_ST_BLE_HID
-    if (err == ESP_OK) {
-        ble_hid_start();
-    }
-#endif
-    xTaskCreatePinnedToCore(stats_task, "stats", 3072, NULL, 2, NULL, 0);
-    xTaskCreatePinnedToCore(temperature_task, "temperature", 2560, NULL, 11,
-                            &s_temperature_task, 1);
-#if CONFIG_ST_SETUP_SCREEN
-    if (s_fb != NULL && !start_now) {
-        setup_ui_run(s_fb, s_drive_info, false);
-    }
-#endif
-
-    /* (RAM and ROM buffers are already in s_cfg: machine_memory()) */
-#if CONFIG_ST_MONO
-    s_cfg.monitor = ST_MONITOR_MONO;
-#else
-    s_cfg.monitor = ST_MONITOR_COLOR;
-#endif
-#if CONFIG_ST_ANY_RESOLUTION
-    s_cfg.any_resolution = true;
-#endif
-    s_cfg.resolution_changed = resolution_changed;
-    s_cfg.hd_path = hd;
-#if CONFIG_ST_HD_BOOT
-    s_cfg.hd_boot = true;
-#endif
-#if CONFIG_ST_SPEAKER
-    st_audio_enable(true);
-#endif
-    if (!machine_start()) {
-        return;
-    }
-
-    if (s_fb != NULL) {
-        xTaskCreatePinnedToCore(present_task, "present", 4096, s_fb, 5, NULL, 0);
-    }
-#if CONFIG_ST_SPEAKER
-    speaker_start();
-#endif
-    xTaskCreatePinnedToCore(emulator_task, "emulator", 8192, NULL, 10, NULL, 1);
-    s_started = true;
-#if CONFIG_ST_SETUP_SCREEN
-    if (s_fb != NULL) {
-        xTaskCreatePinnedToCore(supervisor_task, "supervisor", 16384, NULL, 4, NULL, 0);
-    }
-#endif
-
-    ESP_LOGI(TAG, "Free internal: %u bytes, PSRAM: %u bytes",
-             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-             (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    emu_run(&machine);
 }

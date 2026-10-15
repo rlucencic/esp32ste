@@ -76,10 +76,13 @@ touch panel, and a web page on your network, handle everything else.
   own STE's TOS 1.62 and/or TOS 2.06 (256 KB each). Put them in `roms/` as
   `tos162.img` and `tos206.img`.
 - A microSD card, FAT32
+- [esp32emu](https://github.com/rlucencic/esp32emu), the shared board runtime, checked out next to
+  this project (`../esp32emu`)
 
 ### 2. Build and flash
 
 ```sh
+git clone https://github.com/rlucencic/esp32emu.git     # the shared runtime, next to it
 git clone https://github.com/rlucencic/esp32ste.git && cd esp32ste
 idf.py build
 idf.py -p /dev/cu.usbmodem… flash      # app and both TOS images
@@ -102,10 +105,10 @@ Later updates only need `idf.py -p … app-flash`.
 |---|---|
 | Get back to the setup screen | Hold the top-right corner of the screen for 2 s |
 | Change TOS or RAM | On the setup screen; **Restart Atari** applies it |
-| Insert a floppy | Setup screen → **Floppy** → **Insert disk** |
+| Insert a floppy | Setup screen → **Floppy** → **Insert disk**, or **Insert into…** on the web page |
 | Make a blank floppy | Setup screen → **Floppy** → **New empty disk** |
 | Copy disk images from a computer | Open `http://atari-ste.local` and drop them onto the page (ZIP files are unpacked) |
-| …or from the command line | `curl -T game.st http://atari-ste.local/floppies/` |
+| …or from the command line | `curl -T game.st http://atari-ste.local/disks/` |
 | Use programs from the SD card | Copy them anywhere on the card; they're on drive C: |
 
 Disk images live in the `floppies` folder on the SD card. The inserted disks
@@ -126,6 +129,11 @@ are remembered across restarts.
 | Offer all resolutions | on | Low, medium and high in Set Preferences |
 | SD card as hard disk C: | on | Optionally only a folder of the card; boot from C: |
 | Floppy folder | `floppies` | Where disk images are kept |
+
+and → **Emulator board** (the shared runtime):
+
+| Option | Default | |
+|---|---|---|
 | WiFi, setup screen | on | Time zone for the clock (POSIX TZ) |
 | Start by itself | off | Countdown on the setup screen |
 | Web page, network name | on, `atari-ste` | `http://<name>.local` |
@@ -158,11 +166,13 @@ flowchart LR
 - **`components/atari_st`**: the STE, platform independent. It also builds
   on a desktop (`components/atari_st/host`) for testing with scripted mouse
   and keyboard input, screenshots and CPU traces.
-- **`components/musashi`**: the 68000 core, Musashi from
-  [evansm7's fork](https://github.com/evansm7/Musashi) with static opcode tables
-  and the 68000 bus error frame.
-- **`main`**: the board: display, touch, SD card, WiFi, Bluetooth, setup
-  screen, web page and a serial console.
+- **`main`**: the STE on the board: memory, TOS, settings, keyboard map,
+  floppy drives and status.
+- **[esp32emu](https://github.com/rlucencic/esp32emu)** (shared with the Macintosh emulator
+  [esp32mac](https://github.com/rlucencic/esp32mac)): the board runtime (display, touch, SD card, WiFi,
+  Bluetooth, setup screen, web page, serial console) and the 68000 core,
+  Musashi from [evansm7's fork](https://github.com/evansm7/Musashi) with
+  static opcode tables and the 68000 bus error frame.
 
 TOS is patched in RAM, with every patch checked against the expected bytes:
 all resolutions in Set Preferences, no wait for an ACSI hard disk when C: is
@@ -176,8 +186,8 @@ image or hard disk driver.
 make -C components/atari_st/host                     # desktop build of the STE
 components/atari_st/host/build/st_host roms/tos206.img 600 out.ppm 1024
 
-python tools/st_console.py /dev/cu.usbmodem… lcd screen.png   # screenshot of the panel
-python tools/st_console.py /dev/cu.usbmodem… log 10           # board log
+python ../esp32emu/tools/emu_console.py /dev/cu.usbmodem… lcd screen.png   # screenshot of the panel
+python ../esp32emu/tools/emu_console.py /dev/cu.usbmodem… log 10           # board log
 curl http://atari-ste.local/api/status                        # live status as JSON
 ```
 
@@ -204,8 +214,8 @@ and the lessons learned along the way.
 
 ## Licence
 
-[MIT](LICENSE). The bundled Musashi core is MIT licensed too (see
-`components/musashi/musashi/readme.txt`). LVGL (MIT) and ESP-IDF (Apache 2.0)
+[MIT](LICENSE). The Musashi core in esp32emu is MIT licensed too (see
+`../esp32emu/components/musashi/musashi/readme.txt`). LVGL (MIT) and ESP-IDF (Apache 2.0)
 are fetched at build time and keep their own licences.
 
 Atari, ST and TOS are trademarks of their respective owners. This project

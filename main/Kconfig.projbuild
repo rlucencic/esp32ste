@@ -82,96 +82,11 @@ menu "Atari STE emulator"
         default "floppies"
         help
             Relative to the card's root. Disk images (.ST, .MSA) in it can be
-            put into drives A: and B: on the setup screen; new blank disks
-            (EMPTY0001.ST, ...) are made there. Made if missing.
-
-    config ST_WEB
-        bool "Web page for floppy disk images"
-        depends on ST_WIFI
-        default y
-        help
-            A web server on the board (http://<hostname>.local) to upload
-            disk images from a computer into the floppies folder (drag and
-            drop, .ZIP files are unpacked), download and delete them. Also
-            for scripts: curl -T game.st http://atari-ste.local/floppies/
-
-    config ST_HOSTNAME
-        string "Network name of the board"
-        depends on ST_WIFI
-        default "atari-ste"
-        help
-            Announced over mDNS (<name>.local) and DHCP.
-
-    config ST_SPEAKER
-        bool "Sound on the board speaker"
-        default n
-        help
-            Play the ST's sound (YM2149 + STE DMA sound) through the onboard
-            MAX98357A amplifier. Its I2S pins are shared with the native USB
-            port (GPIO19/20), so that port stops working once the emulator
-            starts: the console (logs, tools/st_console.py) moves to the
-            USB-to-UART port at 921600 baud, and flashing goes through that
-            port too.
-
-    config ST_SPEAKER_VOLUME
-        int "Speaker volume (%)"
-        depends on ST_SPEAKER
-        range 0 100
-        default 60
-
-    config ST_WIFI
-        bool "WiFi"
-        default y
-        help
-            Connect to WiFi (stays connected while the ST runs) and set the
-            clock from the internet; the ST's clock follows it.
-
-    config ST_SETUP_SCREEN
-        bool "Setup screen before the ST starts"
-        depends on ST_WIFI
-        default y
-        help
-            Touch screen to choose a WiFi network and see the time. The ST
-            starts by itself shortly after the time is known.
-
-    config ST_AUTOSTART
-        bool "Start the ST by itself"
-        depends on ST_SETUP_SCREEN
-        default n
-        help
-            Leave the setup screen after a countdown once the time is known
-            (or without WiFi set up), for boards nobody is watching. Without
-            this the setup screen waits for Start Atari.
-
-    config ST_AUTOSTART_SECONDS
-        int "Countdown (seconds)"
-        depends on ST_AUTOSTART
-        range 1 60
-        default 5
-
-    config ST_TIMEZONE
-        string "Time zone (POSIX TZ)"
-        depends on ST_WIFI
-        default "CET-1CEST,M3.5.0,M10.5.0/3"
-        help
-            Local time rules, e.g. "CET-1CEST,M3.5.0,M10.5.0/3" for Central
-            Europe or "GMT0BST,M3.5.0/1,M10.5.0" for the UK.
-
-    config ST_BLE_HID
-        bool "BLE keyboard and mouse"
-        default y
-        depends on BT_NIMBLE_ENABLED
-        help
-            Connect a Bluetooth LE keyboard and mouse as the ST's keyboard and
-            mouse. New devices pair when put into pairing mode.
-
-    config ST_MOUSE_DIVIDER
-        int "Mouse speed divider"
-        depends on ST_BLE_HID
-        range 1 8
-        default 2
-        help
-            BLE mouse motion is divided by this before it reaches the ST.
-            Higher is slower.
+            put into drives A: and B: on the setup screen or the web page;
+            new blank disks (EMPTY0001.ST, ...) are made there. Made if
+            missing.
 
 endmenu
+
+# WiFi, web page, setup screen, Bluetooth and speaker: "Emulator board"
+# (../esp32emu/components/emu/Kconfig)

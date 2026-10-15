@@ -1102,7 +1102,7 @@ static void native_adjust_request(void)
     }
 }
 
-int st_illegal_opcode(int opcode)
+int m68k_host_illegal(int opcode)
 {
     /* 24-bit address bus: TOS jumps to ca_init with the flag byte still in
      * the top of the PC

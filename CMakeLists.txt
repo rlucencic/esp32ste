@@ -1,6 +1,9 @@
 # Makerfabs MaTouch ESP32-S3 Parallel TFT with Touch 7" (ESP32-S3-WROOM-1-N16R8)
 cmake_minimum_required(VERSION 3.16)
 
+# The shared board runtime and the 68000 core: ../esp32emu
+set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/../esp32emu/components")
+
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 idf_build_set_property(MINIMAL_BUILD ON)
 project(esp32ste)

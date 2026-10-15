@@ -109,7 +109,7 @@ void st_ram_read(uint32_t address, uint8_t *dst, uint32_t len);
 /* gemdos.c: SD card / host folder as drive C: */
 void gemdos_init(const char *root, bool boot);
 void gemdos_reset(void);
-int st_illegal_opcode(int opcode);
+int m68k_host_illegal(int opcode);
 
 /* GEM (re)started in this resolution */
 void st_desktop_resolution(int rez);

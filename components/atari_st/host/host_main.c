@@ -38,7 +38,7 @@ static int trace_left;
 static uint32_t ring[RING_SIZE];
 static uint32_t ring_pos;
 
-void st_instruction_hook(unsigned int pc)
+void m68k_host_instruction(unsigned int pc)
 {
     /* ST_WATCH=<addr hex>: report each change of the word there, with the
      * instruction that made it
