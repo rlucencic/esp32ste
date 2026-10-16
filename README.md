@@ -24,6 +24,11 @@ keyboard and mouse stand in for the ST's own, the microSD card is hard disk
 C:, and floppy disk images go in drives A: and B:. A setup screen on the
 touch panel, and a web page on your network, handle everything else.
 
+It's the sibling of [esp32mac](https://github.com/rlucencic/esp32mac)
+(Macintosh Plus, SE, Classic) and [esp32cpc](https://github.com/rlucencic/esp32cpc)
+(Amstrad CPC), on the same board; all three are built on the shared runtime
+[esp32emu](https://github.com/rlucencic/esp32emu).
+
 ## Features
 
 **The machine**
@@ -168,8 +173,9 @@ flowchart LR
   and keyboard input, screenshots and CPU traces.
 - **`main`**: the STE on the board: memory, TOS, settings, keyboard map,
   floppy drives and status.
-- **[esp32emu](https://github.com/rlucencic/esp32emu)** (shared with the Macintosh emulator
-  [esp32mac](https://github.com/rlucencic/esp32mac)): the board runtime (display, touch, SD card, WiFi,
+- **[esp32emu](https://github.com/rlucencic/esp32emu)** (shared with
+  [esp32mac](https://github.com/rlucencic/esp32mac) and
+  [esp32cpc](https://github.com/rlucencic/esp32cpc)): the board runtime (display, touch, SD card, WiFi,
   Bluetooth, setup screen, web page, serial console) and the 68000 core,
   Musashi from [evansm7's fork](https://github.com/evansm7/Musashi) with
   static opcode tables and the 68000 bus error frame.
