@@ -25,8 +25,9 @@ C:, and floppy disk images go in drives A: and B:. A setup screen on the
 touch panel, and a web page on your network, handle everything else.
 
 It's the sibling of [esp32mac](https://github.com/rlucencic/esp32mac)
-(Macintosh Plus, SE, Classic) and [esp32cpc](https://github.com/rlucencic/esp32cpc)
-(Amstrad CPC), on the same board; all three are built on the shared runtime
+(Macintosh Plus, SE, Classic), [esp32cpc](https://github.com/rlucencic/esp32cpc)
+(Amstrad CPC) and [esp32zx](https://github.com/rlucencic/esp32zx) (ZX
+Spectrum), on the same board; all four are built on the shared runtime
 [esp32emu](https://github.com/rlucencic/esp32emu).
 
 ## Features
@@ -174,8 +175,9 @@ flowchart LR
 - **`main`**: the STE on the board: memory, TOS, settings, keyboard map,
   floppy drives and status.
 - **[esp32emu](https://github.com/rlucencic/esp32emu)** (shared with
-  [esp32mac](https://github.com/rlucencic/esp32mac) and
-  [esp32cpc](https://github.com/rlucencic/esp32cpc)): the board runtime (display, touch, SD card, WiFi,
+  [esp32mac](https://github.com/rlucencic/esp32mac),
+  [esp32cpc](https://github.com/rlucencic/esp32cpc) and
+  [esp32zx](https://github.com/rlucencic/esp32zx)): the board runtime (display, touch, SD card, WiFi,
   Bluetooth, setup screen, web page, serial console) and the 68000 core,
   Musashi from [evansm7's fork](https://github.com/evansm7/Musashi) with
   static opcode tables and the 68000 bus error frame.
