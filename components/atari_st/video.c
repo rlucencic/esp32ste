@@ -72,7 +72,7 @@ static uint32_t video_counter(void)
     if (visible >= st.visible_lines) {
         return vid.frame_base + st.visible_lines * stride;
     }
-    int cycle = st.cycle_in_line + m68k_cycles_run();
+    int cycle = st_bus_cycle_in_line();
     int bytes = cycle * bytes_per_line(vid.frame_mode) / st.line_cycles;
     return vid.frame_base + visible * stride + (bytes & ~1);
 }

@@ -198,7 +198,8 @@ static void blit(void)
     set_reg_addr(0x32, dst & 0xFFFFFE);
     set_reg16(0x38, 0);
     regs[0x3C] = (ctrl & ~(CTRL_BUSY | 15)) | line;
-    m68ki_remaining_cycles -= accesses * ACCESS_CYCLES;
+    /* (in bus time: a faster CPU waits longer for it) */
+    m68ki_remaining_cycles -= (int)((int64_t)accesses * ACCESS_CYCLES * st.cpu_speed / ST_CPU_SPEED_8MHZ);
 }
 
 void blitter_reset(void)

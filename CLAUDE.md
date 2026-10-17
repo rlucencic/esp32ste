@@ -1,14 +1,16 @@
-# esp32ste: Atari STE emulator on the Makerfabs MaTouch ESP32-S3 7"
+# esp32ste: Atari STE emulator on the Makerfabs MaTouch ESP32-S3 7" and the M5Stack Tab5
 
-An Atari STE (68000, TOS 1.62 / 2.06, up to 4 MB) on an ESP32-S3 board with
-a 1024x600 touch LCD. Bluetooth keyboard and mouse, the SD card as hard disk
-C:, floppy disk images in drives A: and B:, an LVGL setup screen, and a web
-page for disk images and live status. ESP-IDF v5.5.4, C.
+An Atari STE (68000 at 8 MHz, 16 MHz or Fastest, TOS 1.62 / 2.06, up to
+4 MB) on two boards: the Makerfabs MaTouch ESP32-S3 7" (1024x600, target
+esp32s3, the default) and the M5Stack Tab5 (ESP32-P4, 1280x720, target
+esp32p4, see "M5Stack Tab5" below). Bluetooth keyboard and mouse, the SD
+card as hard disk C:, floppy disk images in drives A: and B:, an LVGL setup
+screen, and a web page for disk images and live status. ESP-IDF v5.5.4, C.
 
 The board side (tasks, LCD, touch, SD, WiFi, BLE, setup screen, web page,
 console) and the 68000 core are the shared library in `../esp32emu`, also
-used by `../esp32mac` (Macintosh). See its CLAUDE.md; changes there need
-both projects built.
+used by `../esp32mac`, `../esp32cpc`, `../esp32zx` and `../esp32cbm`. See
+its CLAUDE.md; changes there need all five projects built, for both boards.
 
 ## Hardware
 
@@ -18,7 +20,8 @@ Makerfabs MaTouch ESP32-S3 Parallel TFT with Touch 7", ESP32-S3-WROOM-1-N16R8:
 microSD (SDMMC 1-bit), MAX98357A I2S amplifier. Pins are in
 `../esp32emu/components/emu/include/emu/board.h`.
 The board's native USB port is the console (USB-Serial-JTAG), port
-`/dev/cu.usbmodem1101` on the user's Mac (was `3101` for a while).
+`/dev/cu.usbmodem1101` on the user's Mac. The Tab5 is `/dev/cu.usbmodem3101`
+(its hardware: `../esp32emu/CLAUDE.md`).
 
 ## Build, flash, debug
 
@@ -56,7 +59,9 @@ reset, `F <drive> [name|+]` insert / eject / make a blank disk, `t x y [ms]`
 simulated touch (use it to drive the setup screen remotely; one tap per
 `send` call), `i` machine state; the ST's own (in `main/main.c`): `k <hex>`
 tap a key, `m dx dy btn` mouse, `R <tos 0|1> <ram KB>` restart with that
-TOS/RAM. Sending several commands needs ~0.1 s between them through the
+TOS/RAM, `C <0|1|2>` CPU 8 MHz / 16 MHz / Fastest (live). Touches are in
+the board's picture pixels: Start is `t 850 532` on the MaTouch, `t 1065 637`
+on the Tab5; the CPU row's buttons `t 304|494|686 341` / `t 380|618|855 403`. Sending several commands needs ~0.1 s between them through the
 tool; a GEM double-click needs them faster (write to the port directly).
 
 ## M5Stack Tab5
@@ -103,26 +108,38 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
 
 - The runtime in `../esp32emu` (`emu_run()`) owns the tasks: emulation on
   core 1 (`st_run_frame()` per frame, paced by `esp_timer` or the speaker),
-  presenter (ST screen scaled to 960x600 at x=32, nearest pixel, only when
-  `st_screen_signature()` changes), console, stats, supervisor, WiFi,
+  presenter (ST screen scaled to 960x600 at x=32 on the MaTouch, 1152x720
+  at x=64 on the Tab5, nearest pixel, only when `st_screen_signature()`
+  changes), console, stats, supervisor, WiFi,
   NimBLE and HTTP on core 0. See its CLAUDE.md.
 - `main/main.c` plugs the ST in: `reserve_memory()` (settings, ST RAM + ROM
   copy + opcode tables, first thing), `storage()` (C: on the SD card),
   `start()` (TOS from its partition, `st_init()`), the setup screen choices
-  (TOS, RAM), the floppy drives (`disks_config_t`), key map (HID usages ->
+  (TOS, RAM; CPU speed, live), `run_frame()` (the CPU speed, Fastest's
+  controller), the floppy drives (`disks_config_t`), key map (HID usages ->
   ST scancodes, both Controls/Alternates on one ST key), status rows and
   console commands; `every_second()` saves the desktop resolution.
-- **Setup screen** (shared, LVGL 9.4): status (TOS, RAM, WiFi, time),
+- **Setup screen** (shared, LVGL 9.4): status (TOS, RAM, CPU, WiFi, time),
   networks, password, Bluetooth, pairing, floppy, disk images. While the ST
   runs it's opened by the corner long-press, the emulator pauses, and
-  changing TOS/RAM restarts the ST ("Restart Atari"), "Reset Atari"
-  cold-resets it. `CONFIG_EMU_AUTOSTART` is off by default.
+  changing TOS/RAM restarts the ST ("Restart Atari"), the CPU speed applies
+  at once, "Reset Atari" cold-resets it. `CONFIG_EMU_AUTOSTART` is off by default.
 
 ### The emulator core (`components/atari_st`)
 
 - RAM/ROM stored with each 16-bit word in host order (byte n at index n^1).
 - `st.c` frame loop: per scanline run CPU cycles, Timer B, MFP, ACIA, FDC,
   audio. GLUE interrupts, bus errors, halt handling, `st_ram_free()`.
+- **CPU speed** (`st_set_cpu_speed()`, 1/256 of 8 MHz): the 68000 runs
+  `cpu_line_cycles` (`line_cycles` x speed) per scanline, everything else
+  keeps bus time (`line_cycles`, 8 MHz). The three places that read the
+  position within a line (video counter, audio clock) go through
+  `st_bus_cycle_in_line()`; the blitter's bus time is charged x speed. At
+  256 all of it is the old arithmetic exactly (GEMBench 107%, same scores).
+  `main.c`: 8 MHz, 16 MHz, or Fastest: before each frame the emulation task
+  sets the speed; Fastest aims the frame's emulation at 85% of its period
+  (`FASTEST_SHARE`), slowing down by half the gap, speeding up by an eighth,
+  8 to 256 MHz. The setting is `live` (no restart). Console: `C <0|1|2>`.
 - `mem.c` memory map, `io.c` I/O map (unmapped I/O raises bus errors; TOS
   probes hardware that way), `mfp.c`, `acia.c` (IKBD, clock from `time()`),
   `video.c` (multisync: the monitor follows the mode), `blitter.c`,
@@ -149,7 +166,8 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
 
 ### Persistent state
 
-- NVS `atari`: `tos` (0/1), `ram_kb`, `rez` (last desktop resolution).
+- NVS `atari`: `tos` (0/1), `ram_kb`, `rez` (last desktop resolution),
+  `cpu` (0 8 MHz, 1 16 MHz, 2 Fastest).
 - NVS `floppy`: `disk_a`, `disk_b` (file names), `empty_n` (last EMPTYnnnn).
 - NVS `blehid`: `known` (paired devices); NimBLE keeps bonds itself. Shared
   with the Mac firmware (same NVS partition): pairings and WiFi survive
@@ -211,6 +229,19 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
   ~5 s. A probe loop otherwise floods the log.
 - **TOS 2.06 checks its ROM CRC** in the first 80 s after power-on (always,
   in emulation): patched out, else "BAD ROM CRC" twice.
+- **Scripted mouse: keep off the menu bar.** TOS menus open on hover; a
+  script that parks the mouse at the top-left (-900,-900) and moves on a few
+  frames later had its double-click land in the open Desk menu once the CPU
+  was fast enough to open it first (from ~15.5 MHz in high res): it looked
+  like a 16 MHz double-click bug. Park at the bottom-left (-900,+900).
+  GEM double-clicks: presses 3-6 frames apart.
+- **Xtensa traps on integer division by zero** (RISC-V and the Mac's ARM
+  don't): `st_bus_cycle_in_line()` ran before the first frame had set
+  `cpu_line_cycles` and only the MaTouch crashed (Guru Meditation on core 0
+  at start).
+- **Cycle-based speed limits favour long instructions**: on Fastest, Musashi
+  runs a 68000 DIVS (~150 cycles) as one cheap instruction, so the controller
+  reaches the 256 MHz ceiling in GEMBench's integer division (2589%).
 
 ## Testing
 
@@ -225,16 +256,30 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
   `ST_BLITLOG`. Script lines: `<frame> mouse dx dy btn | key <hex> 0|1 |
   shot <file.ppm> | dump <file> | insert <drive> <path> | eject <drive>`
   (arguments up to 63 characters, up to 4096 lines). The mouse is relative:
-  move by -900,-900 first to reach the top-left corner; GEM drags need slow
-  movement.
+  move by -900,+900 first to reach the bottom-left corner (not the
+  top-left: the menu bar opens menus, see the lessons); GEM drags need slow
+  movement. `ST_CPU=<MHz>`: the 68000's speed; `ST_PCLOG=<pc>:<frame>`
+  (+ `ST_PCLOG_MEM=a,b`): registers, stack and memory each time pc runs;
+  `ST_AES=<frame>`: AES calls through TRAP #2 (not the ROM desktop's).
 - **GEMBench** (6.31 from exxosforum.co.uk/atari/last/GB6/, 4.03 on the
   "Delta Labs 165" disk at downloads.atari-home.de) runs in the host build
-  from C: or A:. GEMBench 6.31, TOS 1.62, high res: 107% average.
+  from C: or A:. GEMBench 6.31, TOS 1.62, high res, 1 MB: 107% average at
+  8 MHz (host, MaTouch, Tab5: the same emulated machine), 205% at 16 MHz,
+  385% at 32 MHz (host) and on Fastest (Tab5). Its timer is emulated time:
+  a slower board gives the same scores, only later. On the board: a 720 KB
+  image with GEMBench 6.31 (folders BIN, SETS) uploaded to `floppies/`,
+  inserted in A:, run through the console's `m` mouse moves (double-clicks
+  written straight to the port, ~0.05 s apart).
+- **Real time during GEMBench** (sampled from the web API every 5 s): Tab5
+  8 MHz 99-103%, core 1 ~40% (up to 53%), ~5 min; 16 MHz 99-101%, core 1 up
+  to 93%, ~2 3/4 min; Fastest 99-101%, 15-20 MHz in the drawing tests.
+  MaTouch 8 MHz 51-101% (~78% average), core 1 ~90%, ~6 1/2 min; 16 MHz
+  ~45% on the desktop.
 - **On the board:** status via the web API, screenshots via the console,
   the setup screen via `t x y` touches. Things that only the user can see
   (the panel itself, touch feel, audio) need them to check.
-- Speed: about 83-85% of a real STE on the TOS 2.06 desktop in high
-  resolution, 77-81% with TOS 1.62.
+- Speed: on the MaTouch about 83-85% of a real STE on the TOS 2.06 desktop
+  in high resolution, 77-81% with TOS 1.62; on the Tab5 100%.
 
 ## Open items
 
@@ -245,6 +290,10 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
 - `docs/images/web.png` and `floppy.png` show the older wording of the drop
   area and the floppy page (see Web): retake them when the ST is on the
   board again (`../esp32emu/CLAUDE.md`, README screenshots).
+- README images: `setup-cpu.png` (the MaTouch's setup screen with the CPU
+  row; `setup.png`, without it, is no longer shown), `gembench.png` (8 MHz,
+  host), `gembench-16mhz.png` and `gembench-fastest.png` (Tab5),
+  `tab5-setup.png`, `tab5-desktop.png` (the Tab5's whole 1280x720 picture).
 - Floppy timing is about 10x faster than a real drive (2 ms per sector).
 - Public on GitHub (`github.com/rlucencic/esp32ste`, pushed to `main`).
   Licence: MIT (`LICENSE`), like Musashi.

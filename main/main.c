@@ -1,5 +1,5 @@
 /*
- * Atari STE emulator on the Makerfabs MaTouch ESP32-S3 7".
+ * Atari STE emulator on the Makerfabs MaTouch ESP32-S3 7" or the M5Stack Tab5.
  *
  * The board side (tasks, LCD, touch, WiFi, Bluetooth, setup screen, web
  * page, console) is the shared runtime in ../esp32emu; this file plugs the
@@ -12,6 +12,7 @@
 #include "freertos/task.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "emu/console.h"
 #include "emu/emu.h"
 #include "emu/sdcard.h"
@@ -123,6 +124,43 @@ static void every_second(void)
         settings.resolution = rez;
         settings_save();
     }
+}
+
+/* ---- 68000 speed ----
+ *
+ * 8 and 16 MHz are fixed. Fastest: as fast as the frames still come in
+ * time, the emulation taking up to FASTEST_SHARE of each frame's period on
+ * core 1 (the rest: frames that take longer, the other tasks there). It
+ * slows down quickly and speeds up slowly; never below 8 MHz.
+ */
+#define FASTEST_SHARE   85                          /* % of the frame period */
+#define FASTEST_MAX     (32 * ST_CPU_SPEED_8MHZ)    /* 256 MHz */
+#define ST_MHZ(speed)   (8.010613f * (speed) / ST_CPU_SPEED_8MHZ)
+
+/* The emulation task sets the speed before each frame: the setting may
+ * change on another task (setup screen, console) at any time
+ */
+static void run_frame(void)
+{
+    uint8_t cpu = settings.cpu;
+    if (cpu != SETTINGS_CPU_FASTEST) {
+        st_set_cpu_speed(cpu == SETTINGS_CPU_16MHZ ? 2 * ST_CPU_SPEED_8MHZ : ST_CPU_SPEED_8MHZ);
+        st_run_frame();
+        return;
+    }
+    /* Fastest: from where it is */
+    int64_t start = esp_timer_get_time();
+    st_run_frame();
+    int64_t used = esp_timer_get_time() - start;
+    st_screen_mode_t mode;
+    st_get_screen_mode(&mode);
+    int64_t budget = 1000000LL * FASTEST_SHARE / (100 * mode.hz);
+    int64_t speed = st_cpu_speed();
+    /* The speed this frame would have just fitted at, part of the way */
+    int64_t fit = used > 0 ? speed * budget / used : FASTEST_MAX;
+    speed += fit < speed ? (fit - speed) / 2 : (fit - speed) / 8;
+    speed = speed < ST_CPU_SPEED_8MHZ ? ST_CPU_SPEED_8MHZ : speed > FASTEST_MAX ? FASTEST_MAX : speed;
+    st_set_cpu_speed((unsigned)speed);
 }
 
 /* (Re)start the ST with the current settings (TOS, RAM); the emulation is
@@ -308,9 +346,26 @@ static void ram_set(int i)
     }
 }
 
+/* The 68000's speed: changed right away, no restart */
+static const char *const cpu_names[] = { "8 MHz", "16 MHz", "Fastest", "" };
+
+static int cpu_get(void)
+{
+    return settings.cpu;
+}
+
+static void cpu_set(int i)
+{
+    if (i >= SETTINGS_CPU_8MHZ && i <= SETTINGS_CPU_FASTEST) {
+        settings.cpu = i;       /* run_frame() takes it from here */
+        settings_save();
+    }
+}
+
 static const emu_choice_t choices[] = {
-    { "System", tos_names, tos_get, tos_set },
-    { "Memory", ram_names, ram_get, ram_set },
+    { "System", tos_names, tos_get, tos_set, false },
+    { "Memory", ram_names, ram_get, ram_set, false },
+    { "CPU", cpu_names, cpu_get, cpu_set, true },        /* live */
 };
 
 /* ---- Floppy disks ---- */
@@ -366,6 +421,13 @@ static void status(emu_json_t *j, int section)
                  ram_kb >= 1024 ? ram_kb / 1024 : ram_kb);
         snprintf(text, sizeof(text), "TOS %x.%02x, %s", s_tos_version >> 8, s_tos_version & 0xFF, ram);
         emu_json_row(j, "System", text);
+        float mhz = ST_MHZ(st_cpu_speed());
+        if (settings.cpu == SETTINGS_CPU_FASTEST) {
+            snprintf(text, sizeof(text), "68000, fastest: %.0f MHz now", mhz);
+        } else {
+            snprintf(text, sizeof(text), "68000 at %.0f MHz", mhz);
+        }
+        emu_json_row(j, "CPU", text);
         st_screen_mode_t mode;
         st_get_screen_mode(&mode);
         snprintf(text, sizeof(text), "%d × %d, %d colours, %d Hz", mode.width, mode.height,
@@ -407,14 +469,15 @@ static void console_info(char *buf, size_t len)
     st_status_t s;
     st_get_status(&s);
     uint32_t v_bas_ad = ((uint32_t)st_peek16(0x44E) << 16) | st_peek16(0x450);
-    snprintf(buf, len, "frames %lu PC $%06lx SR $%04x hz_200 %lu v_bas_ad $%06lx bus errors %lu",
+    snprintf(buf, len, "frames %lu PC $%06lx SR $%04x hz_200 %lu v_bas_ad $%06lx bus errors %lu cpu %.1f MHz",
              (unsigned long)s.frames, (unsigned long)s.pc, s.sr, (unsigned long)s.hz_200,
-             (unsigned long)v_bas_ad, (unsigned long)s.bus_errors);
+             (unsigned long)v_bas_ad, (unsigned long)s.bus_errors, ST_MHZ(st_cpu_speed()));
 }
 
 /*   k <hex scancode>   tap a key
  *   m <dx> <dy> <btn>  move the mouse, btn bit 0 left, bit 1 right
  *   R <tos> <ram KB>   restart with TOS 0 = 1.62, 1 = 2.06 and that much RAM
+ *   C <cpu>            68000 speed: 0 = 8 MHz, 1 = 16 MHz, 2 = fastest
  */
 static bool console_command(const char *line)
 {
@@ -432,6 +495,9 @@ static bool console_command(const char *line)
         st_ikbd_mouse(dx, dy, buttons & 1, buttons & 2);
         return true;
     }
+    case 'C':
+        cpu_set(atoi(line + 1));
+        return true;
     case 'R': {
         int tos = 0, ram_kb = 0;
         if (sscanf(line + 1, "%d %d", &tos, &ram_kb) == 2 && (tos == 0 || tos == 1) &&
@@ -459,7 +525,7 @@ static const emu_machine_t machine = {
     .storage = storage,
     .start = start,
     .reset = st_reset,
-    .run_frame = st_run_frame,
+    .run_frame = run_frame,
     .halted = halted,
     .screen_mode = screen_mode,
     .screen_signature = st_screen_signature,
@@ -471,7 +537,7 @@ static const emu_machine_t machine = {
     .hid_key = hid_key,
     .hid_mouse = hid_mouse,
     .choices = choices,
-    .choice_count = 2,
+    .choice_count = 3,
     .disks = &disks,
     .status = status,
     .console_info = console_info,

@@ -75,11 +75,13 @@ typedef struct {
 
     /* Frame timing */
     int line;                       /* current scanline */
-    int line_cycles;                /* CPU cycles per scanline */
+    int line_cycles;                /* bus (8 MHz) cycles per scanline */
+    unsigned cpu_speed;             /* CPU cycles per bus cycle x 256 */
+    int cpu_line_cycles;            /* CPU cycles per scanline at that speed */
     int lines_per_frame;
     int first_visible_line;
     int visible_lines;
-    int cycle_in_line;              /* cycles run in the current line */
+    int cycle_in_line;              /* CPU cycles run in the current line */
     bool cpu_running;               /* inside m68k_execute() */
     uint32_t frames;
     uint32_t bus_errors;
@@ -92,6 +94,7 @@ extern st_machine_t st;
 /* st.c */
 void st_update_irq(void);
 void st_bus_error(uint32_t address, bool write);
+int st_bus_cycle_in_line(void);     /* where the current line is, in bus cycles */
 bool st_supervisor(void);
 
 /* mem.c: ST memory access for the emulator itself (no side effects; writes

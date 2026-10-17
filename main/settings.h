@@ -7,7 +7,10 @@ typedef struct {
     uint8_t tos;            /* 0 = TOS 1.62, 1 = TOS 2.06 */
     uint16_t ram_kb;        /* 512, 1024, 4096 */
     int8_t resolution;      /* last desktop resolution: 0 low, 1 medium, 2 high, -1 none */
+    uint8_t cpu;            /* 68000 speed: SETTINGS_CPU_8MHZ, _16MHZ, _FASTEST */
 } settings_t;
+
+enum { SETTINGS_CPU_8MHZ, SETTINGS_CPU_16MHZ, SETTINGS_CPU_FASTEST };
 
 extern settings_t settings;
 

@@ -107,6 +107,52 @@ void m68k_host_instruction(unsigned int pc)
                (unsigned long)vec_frame_now, pc);
     }
 
+    /* ST_PCLOG=<pc hex>:<frame>: D0-D7 each time pc is reached after that frame */
+    static uint32_t pclog_pc = 1;
+    static int pclog_after;
+    if (pclog_pc == 1) {
+        const char *e = getenv("ST_PCLOG");
+        pclog_pc = e ? strtoul(e, NULL, 16) : 0;
+        pclog_after = e && strchr(e, ':') ? atoi(strchr(e, ':') + 1) : 0;
+    }
+    if (pclog_pc && pc == pclog_pc && (int)vec_frame_now > pclog_after) {
+        printf("-- $%06x frame %lu:", pc, (unsigned long)vec_frame_now);
+        for (int r = M68K_REG_D0; r <= M68K_REG_D7; r++) {
+            printf(" %x", m68k_get_reg(NULL, r));
+        }
+        uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
+        printf("  stack");
+        for (int i = 0; i < 6; i++) {
+            printf(" %04x", st_peek16(sp + 2 * i));
+        }
+        /* ST_PCLOG_MEM=a,b,...: longs there too */
+        const char *m = getenv("ST_PCLOG_MEM");
+        while (m && *m) {
+            uint32_t addr = strtoul(m, (char **)&m, 16);
+            printf("  [%x]=%04x%04x", addr, st_peek16(addr), st_peek16(addr + 2));
+            if (*m == ',') {
+                m++;
+            }
+        }
+        printf("\n");
+    }
+
+    /* ST_AES=<frame>: log AES calls (TRAP #2, D0 = 200) after that frame:
+     * opcode, int_in[0..1]
+     */
+    static int aes_after = -2;
+    if (aes_after == -2) {
+        aes_after = getenv("ST_AES") ? atoi(getenv("ST_AES")) : -1;
+    }
+    if (aes_after >= 0 && (int)vec_frame_now > aes_after && st_peek16(pc) == 0x4E42 &&
+        (m68k_get_reg(NULL, M68K_REG_D0) & 0xFFFF) == 200) {
+        uint32_t pb = m68k_get_reg(NULL, M68K_REG_D1);
+        uint32_t control = ((uint32_t)st_peek16(pb) << 16) | st_peek16(pb + 2);
+        uint32_t int_in = ((uint32_t)st_peek16(pb + 8) << 16) | st_peek16(pb + 10);
+        printf("-- AES %3u (%u, %u) frame %lu\n", st_peek16(control), st_peek16(int_in),
+               st_peek16(int_in + 2), (unsigned long)vec_frame_now);
+    }
+
     /* ST_VEC=n: remember what led into exception vector n's handler, the
      * last time it was entered
      */
@@ -339,6 +385,10 @@ int main(int argc, char **argv)
     st_audio_enable(getenv("ST_WAV") != NULL);
     if (!st_init(&cfg)) {
         return 1;
+    }
+    /* ST_CPU=<MHz>: the 68000 faster (or slower) than the STE's 8 MHz */
+    if (getenv("ST_CPU")) {
+        st_set_cpu_speed((unsigned)(atof(getenv("ST_CPU")) * ST_CPU_SPEED_8MHZ / 8 + 0.5));
     }
 
     /* ST_NEWDISK=path: write a blank disk; ST_FLOPPY_A/B=image: insert */

@@ -211,6 +211,7 @@ bool st_init(const st_config_t *config)
     st.start_resolution = config->start_resolution;
     st.resolution_changed = config->resolution_changed;
     st.desktop_resolution = -1;
+    st.cpu_speed = ST_CPU_SPEED_8MHZ;
 
     /* Word-swapped working copy of the ROM */
     for (uint32_t i = 0; i < st.rom_size; i += 2) {
@@ -295,6 +296,27 @@ void st_reset(void)
     m68k_pulse_reset();
 }
 
+void st_set_cpu_speed(unsigned speed)
+{
+    st.cpu_speed = speed < ST_CPU_SPEED_8MHZ / 4 ? ST_CPU_SPEED_8MHZ / 4 : speed;
+}
+
+unsigned st_cpu_speed(void)
+{
+    return st.cpu_speed;
+}
+
+/* The CPU runs cpu_line_cycles to the line's line_cycles of bus time */
+int st_bus_cycle_in_line(void)
+{
+    int c = st.cycle_in_line + (st.cpu_running ? m68k_cycles_run() : 0);
+    /* (not set before the first frame: the CPU hasn't run yet) */
+    if (st.cpu_line_cycles == st.line_cycles || st.cpu_line_cycles == 0) {
+        return c;
+    }
+    return (int)((int64_t)c * st.line_cycles / st.cpu_line_cycles);
+}
+
 static void run_cycles(int cycles)
 {
     if (st.halted) {
@@ -317,13 +339,15 @@ static void run_cycles(int cycles)
 void st_run_frame(void)
 {
     video_start_frame();
+    st.cpu_line_cycles = (int)(((uint64_t)st.line_cycles * st.cpu_speed + ST_CPU_SPEED_8MHZ / 2) /
+                               ST_CPU_SPEED_8MHZ);
     st.vbl_pending = true;
 
     for (st.line = 0; st.line < st.lines_per_frame; st.line++) {
         st.hbl_pending = true;
         st_update_irq();
 
-        run_cycles(st.line_cycles);
+        run_cycles(st.cpu_line_cycles);
 
         /* Display enable falls at the end of each visible line: Timer B event */
         int visible = st.line - st.first_visible_line;

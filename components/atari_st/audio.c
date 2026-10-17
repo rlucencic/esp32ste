@@ -124,10 +124,7 @@ static void push_event(uint8_t type, uint8_t reg, uint16_t value, uint32_t value
 
 static uint64_t now_cycles(void)
 {
-    uint32_t c = st.line * st.line_cycles + st.cycle_in_line;
-    if (st.cpu_running) {
-        c += m68k_cycles_run();
-    }
+    uint32_t c = st.line * st.line_cycles + st_bus_cycle_in_line();
     return emu.frame_base + c;
 }
 

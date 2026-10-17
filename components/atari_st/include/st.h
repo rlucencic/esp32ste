@@ -84,6 +84,15 @@ void st_reset(void);
 /* Emulate one video frame (VBL to VBL) */
 void st_run_frame(void);
 
+/* The 68000's speed in 1/256 of the STE's 8 MHz: 256 is an STE (the
+ * default after st_init()), 512 16 MHz. Only the CPU goes faster, like an
+ * accelerator board: video, timers, sound, the blitter and the floppy keep
+ * the STE's timing. Between frames.
+ */
+#define ST_CPU_SPEED_8MHZ   256
+void st_set_cpu_speed(unsigned speed);
+unsigned st_cpu_speed(void);
+
 void st_get_status(st_status_t *status);
 
 /* Free ST RAM as GEMDOS sees it (Malloc(-1) gives the largest block), in

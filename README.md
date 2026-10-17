@@ -2,7 +2,7 @@
 
 <p align="center">
   <b>An Atari STE on a 7-inch ESP32-S3 touch-screen board or an M5Stack Tab5.</b><br>
-  68000, TOS 1.62 / 2.06, up to 4 MB, floppies, hard disk, Bluetooth keyboard and mouse.
+  68000 at 8 MHz, 16 MHz or as fast as the board goes, TOS 1.62 / 2.06, up to 4 MB, floppies, hard disk, Bluetooth keyboard and mouse.
 </p>
 
 <p align="center">
@@ -15,8 +15,14 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/setup.png" width="49%" alt="Setup screen: TOS and memory choice, WiFi, Bluetooth and floppy buttons">
-  <img src="docs/images/gembench.png" width="49%" alt="GEMBench 6.31 results in the emulator">
+  <img src="docs/images/setup-cpu.png" width="49%" alt="Setup screen: TOS, memory and CPU speed choice, WiFi, Bluetooth and floppy buttons">
+  <img src="docs/images/gembench.png" width="49%" alt="GEMBench 6.31 at 8 MHz: 107% of a real STE">
+  <br>
+  <img src="docs/images/gembench-16mhz.png" width="49%" alt="GEMBench 6.31 with the 68000 at 16 MHz on the Tab5: 205% of a real STE">
+  <img src="docs/images/gembench-fastest.png" width="49%" alt="GEMBench 6.31 on Fastest on the Tab5: 385% of a real STE">
+  <br>
+  <sub>GEMBench 6.31 (TOS 1.62, high resolution, 1 MB): 107% of an STE at 8 MHz, 205% at
+  16 MHz and 385% on Fastest, on the M5Stack Tab5 in real time.</sub>
 </p>
 
 esp32ste turns the Makerfabs MaTouch ESP32-S3 Parallel TFT with Touch 7", or an
@@ -35,7 +41,12 @@ Spectrum) and [esp32cbm](https://github.com/rlucencic/esp32cbm) (Commodore
 ## Features
 
 **The machine**
-- 68000 at 8 MHz ([Musashi](https://github.com/kstenerud/Musashi) core), about 80–85% of a real STE's speed
+- 68000 ([Musashi](https://github.com/kstenerud/Musashi) core) at **8 MHz** like an STE, or faster
+  like an accelerator board: **16 MHz**, or **Fastest**, as fast as the board
+  keeps real time (16–20 MHz in GEM on the Tab5, far more in tight loops). The
+  rest of the machine keeps the STE's timing; the choice applies at once,
+  no restart
+- Real-time speed at 8 MHz: 100% on the Tab5, about 80–85% on the MaTouch
 - TOS 1.62 or 2.06, chosen on the setup screen
 - 512 KB, 1 MB or 4 MB of RAM
 - Low, medium and high resolution on one screen, like a multisync monitor;
@@ -53,12 +64,15 @@ Spectrum) and [esp32cbm](https://github.com/rlucencic/esp32cbm) (Commodore
 **Around it**
 - **Setup screen** before the ST starts, and any time while it runs (hold
   the top-right corner for 2 seconds): WiFi, Bluetooth pairing, TOS, RAM,
-  floppy disks, reset
-- **Bluetooth keyboard and mouse** (BLE HID), with battery levels
+  CPU speed, floppy disks, reset
+- **Bluetooth keyboard and mouse** (BLE HID), with battery levels; on the
+  Tab5 also M5Stack's Tab5 Keyboard
 - **Web page** at `http://atari-ste.local`: drop `.ST`, `.MSA` or `.ZIP` files
   onto it to put them on the SD card, and watch the machine, drives, board
   and Bluetooth devices live
-- **Sound** on the board's speaker (optional, `menuconfig`)
+- **Sound** on the board's speaker: on the Tab5 its built-in one (on by
+  default), on the MaTouch an optional speaker on its amplifier output
+  (`menuconfig`)
 
 <p align="center">
   <img src="docs/images/web.png" width="80%" alt="The web page: Atari, drives, board and Bluetooth status above the floppy disk list">
@@ -74,6 +88,16 @@ Spectrum) and [esp32cbm](https://github.com/rlucencic/esp32cbm) (Commodore
 | Storage | microSD card (FAT32 or exFAT) | microSD card (FAT32 or exFAT) |
 | Input | any BLE keyboard and mouse | any BLE keyboard and mouse, or the Tab5 Keyboard |
 | Sound | a speaker on the MAX98357A output (optional, `menuconfig`) | the built-in speaker (ES8388) |
+
+On the MaTouch the ST picture is 960×600, on the Tab5 1152×720 (high
+resolution: 640×400 shown 1.8 times), centred on the panel. The setup
+screen is the same on both, laid out for each panel.
+
+<p align="center">
+  <img src="docs/images/tab5-setup.png" width="49%" alt="The setup screen on the Tab5's 1280×720 panel: TOS, memory and CPU speed choice">
+  <img src="docs/images/tab5-desktop.png" width="49%" alt="The ST's high-resolution desktop on the Tab5, 1152×720 between black borders">
+  <br><sub>On the M5Stack Tab5: the setup screen, and the ST's desktop on the whole 1280×720 picture</sub>
+</p>
 
 ## Getting started
 
@@ -100,7 +124,9 @@ idf.py -B build-tab5 -DIDF_TARGET=esp32p4 -DSDKCONFIG=build-tab5/sdkconfig build
 idf.py -B build-tab5 -DIDF_TARGET=esp32p4 -DSDKCONFIG=build-tab5/sdkconfig -p /dev/cu.usbmodem… flash
 ```
 
-Later updates only need `idf.py -p … app-flash`.
+Later updates only need `idf.py -p … app-flash` (on the Tab5 with the same
+`-B build-tab5 …` options). The Tab5 keeps the ST's settings and disks in its
+own flash; WiFi networks are remembered by its ESP32-C6.
 
 ### 3. First start
 
@@ -109,7 +135,7 @@ Later updates only need `idf.py -p … app-flash`.
    reachable.
 2. Tap **Bluetooth**, put your keyboard or mouse into pairing mode, and tap
    it in the list. Paired devices reconnect by themselves from then on.
-3. Choose **TOS** and **memory**, then tap **Start Atari**.
+3. Choose **TOS**, **memory** and the **CPU** speed, then tap **Start Atari**.
 
 ## Using it
 
@@ -117,6 +143,7 @@ Later updates only need `idf.py -p … app-flash`.
 |---|---|
 | Get back to the setup screen | Hold the top-right corner of the screen for 2 s |
 | Change TOS or RAM | On the setup screen; **Restart Atari** applies it |
+| Change the CPU speed | On the setup screen, at once: 8 MHz for exact STE timing (games, demos), 16 MHz or Fastest for GEM and applications |
 | Insert a floppy | Setup screen → **Floppy** → **Insert disk**, or **Insert into…** on the web page |
 | Make a blank floppy | Setup screen → **Floppy** → **New empty disk** |
 | Copy disk images from a computer | Open `http://atari-ste.local` and drop them onto the page (ZIP files are unpacked) |
@@ -150,7 +177,7 @@ and → **Emulator board** (the shared runtime):
 | Start by itself | off | Countdown on the setup screen |
 | Web page, network name | on, `atari-ste` | `http://<name>.local` |
 | BLE keyboard and mouse | on | Mouse speed divider |
-| Sound on the speaker | off | Volume; moves the console to the UART port |
+| Sound on the speaker | MaTouch off, Tab5 on | Volume; on the MaTouch it moves the console to the UART port |
 
 ## How it works
 
@@ -160,7 +187,7 @@ flowchart LR
     EMU["Emulation<br>68000 · MFP · shifter · blitter<br>WD1772 · YM2149 · DMA sound · IKBD"]
   end
   subgraph core0 [Core 0]
-    PRES[Presenter<br>ST screen → 960×600]
+    PRES[Presenter<br>ST screen → 960×600 / 1152×720]
     UI[Setup screen<br>LVGL]
     NET[WiFi · web page · mDNS]
     BLE[Bluetooth HID]
@@ -184,10 +211,18 @@ flowchart LR
   [esp32mac](https://github.com/rlucencic/esp32mac),
   [esp32cpc](https://github.com/rlucencic/esp32cpc),
   [esp32zx](https://github.com/rlucencic/esp32zx) and
-  [esp32cbm](https://github.com/rlucencic/esp32cbm)): the board runtime (display, touch, SD card, WiFi,
-  Bluetooth, setup screen, web page, serial console) and the 68000 core,
-  Musashi from [evansm7's fork](https://github.com/evansm7/Musashi) with
-  static opcode tables and the 68000 bus error frame.
+  [esp32cbm](https://github.com/rlucencic/esp32cbm)): the board runtime for
+  both boards (display, touch, SD card, WiFi, Bluetooth, setup screen, web
+  page, serial console; on the Tab5 its ESP32-C6 radio, keyboard and
+  charging) and the 68000 core, Musashi from
+  [evansm7's fork](https://github.com/evansm7/Musashi) with static opcode
+  tables and the 68000 bus error frame.
+
+The 68000 can run faster than the rest of the machine: per scanline it gets
+the STE's 8 MHz worth of cycles times the CPU speed, while video, timers,
+sound, the blitter and the floppy keep counting the STE's bus cycles. On
+Fastest the board measures each frame and raises the speed as long as the
+frame still fits in its time.
 
 TOS is patched in RAM, with every patch checked against the expected bytes:
 all resolutions in Set Preferences, no wait for an ACSI hard disk when C: is
@@ -200,6 +235,7 @@ image or hard disk driver.
 ```sh
 make -C components/atari_st/host                     # desktop build of the STE
 components/atari_st/host/build/st_host roms/tos206.img 600 out.ppm 1024
+ST_CPU=16 components/atari_st/host/build/st_host roms/tos206.img 600 out.ppm   # the 68000 at 16 MHz
 
 python ../esp32emu/tools/emu_console.py /dev/cu.usbmodem… lcd screen.png   # screenshot of the panel
 python ../esp32emu/tools/emu_console.py /dev/cu.usbmodem… log 10           # board log
@@ -211,15 +247,18 @@ and the lessons learned along the way.
 
 ## Limitations
 
-- The M5Stack Tab5 port is new: the machine starts there and runs at full
-  speed at its start-up screen, with core 1 far less busy than on the S3,
-  but sound, touch, Bluetooth and the Tab5 Keyboard have not been tried on
-  it by hand yet.
+- The M5Stack Tab5 port is new: GEMBench runs there in real time at 8 and
+  16 MHz, but sound, touch, Bluetooth and the Tab5 Keyboard have not been
+  tried on it by hand yet.
 - `.STX` (Pasti) images of copy-protected originals don't work; `.MSA`
   images are read-only.
 - No FPU, ACSI, MIDI or Mega STE hardware.
 - Floppy access is faster than a real drive, which a few loaders may notice.
-- About 80–85% of real speed on the desktop; demanding demos will run slower.
+- On the MaTouch, about 80–85% of real speed on the desktop at 8 MHz, and
+  demanding demos run slower; 16 MHz there gives about 45% (Fastest stays
+  at 8 MHz). The Tab5 keeps 100% at 8 and 16 MHz.
+- 16 MHz and Fastest change a program's timing as an accelerator would:
+  games and demos that count on an 8 MHz 68000 can misbehave.
 
 ## Credits
 

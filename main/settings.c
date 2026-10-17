@@ -17,6 +17,7 @@ void settings_load(void)
 #endif
     settings.ram_kb = CONFIG_ST_RAM_KB;
     settings.resolution = -1;
+    settings.cpu = SETTINGS_CPU_8MHZ;
 
     nvs_handle_t h;
     if (nvs_open(NAMESPACE, NVS_READONLY, &h) != ESP_OK) {
@@ -35,6 +36,9 @@ void settings_load(void)
     if (nvs_get_i8(h, "rez", &i8) == ESP_OK && i8 >= -1 && i8 <= 2) {
         settings.resolution = i8;
     }
+    if (nvs_get_u8(h, "cpu", &u8) == ESP_OK && u8 <= SETTINGS_CPU_FASTEST) {
+        settings.cpu = u8;
+    }
     nvs_close(h);
 }
 
@@ -48,6 +52,7 @@ void settings_save(void)
     nvs_set_u8(h, "tos", settings.tos);
     nvs_set_u16(h, "ram_kb", settings.ram_kb);
     nvs_set_i8(h, "rez", settings.resolution);
+    nvs_set_u8(h, "cpu", settings.cpu);
     nvs_commit(h);
     nvs_close(h);
 }
