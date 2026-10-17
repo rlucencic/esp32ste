@@ -1,7 +1,7 @@
 # esp32ste: Atari STE emulator on the Makerfabs MaTouch ESP32-S3 7" and the M5Stack Tab5
 
-An Atari STE (68000 at 8 MHz, 16 MHz or Fastest, TOS 1.62 / 2.06, up to
-4 MB) on two boards: the Makerfabs MaTouch ESP32-S3 7" (1024x600, target
+An Atari STE (68000 at 8 MHz, on the Tab5 also 16 MHz or Fastest, TOS
+1.62 / 2.06, up to 4 MB) on two boards: the Makerfabs MaTouch ESP32-S3 7" (1024x600, target
 esp32s3, the default) and the M5Stack Tab5 (ESP32-P4, 1280x720, target
 esp32p4, see "M5Stack Tab5" below). Bluetooth keyboard and mouse, the SD
 card as hard disk C:, floppy disk images in drives A: and B:, an LVGL setup
@@ -59,9 +59,10 @@ reset, `F <drive> [name|+]` insert / eject / make a blank disk, `t x y [ms]`
 simulated touch (use it to drive the setup screen remotely; one tap per
 `send` call), `i` machine state; the ST's own (in `main/main.c`): `k <hex>`
 tap a key, `m dx dy btn` mouse, `R <tos 0|1> <ram KB>` restart with that
-TOS/RAM, `C <0|1|2>` CPU 8 MHz / 16 MHz / Fastest (live). Touches are in
-the board's picture pixels: Start is `t 850 532` on the MaTouch, `t 1065 637`
-on the Tab5; the CPU row's buttons `t 304|494|686 341` / `t 380|618|855 403`. Sending several commands needs ~0.1 s between them through the
+TOS/RAM, `C <0|1|2>` CPU 8 MHz / 16 MHz / Fastest (live, Tab5 only). Touches
+are in the board's picture pixels: Start is `t 850 532` on the MaTouch,
+`t 1065 637` on the Tab5; the Tab5's CPU row buttons `t 380|618|855 403`.
+Sending several commands needs ~0.1 s between them through the
 tool; a GEM double-click needs them faster (write to the port directly).
 
 ## M5Stack Tab5
@@ -115,15 +116,15 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
 - `main/main.c` plugs the ST in: `reserve_memory()` (settings, ST RAM + ROM
   copy + opcode tables, first thing), `storage()` (C: on the SD card),
   `start()` (TOS from its partition, `st_init()`), the setup screen choices
-  (TOS, RAM; CPU speed, live), `run_frame()` (the CPU speed, Fastest's
+  (TOS, RAM; CPU speed, live, Tab5 only), `run_frame()` (the CPU speed, Fastest's
   controller), the floppy drives (`disks_config_t`), key map (HID usages ->
   ST scancodes, both Controls/Alternates on one ST key), status rows and
   console commands; `every_second()` saves the desktop resolution.
 - **Setup screen** (shared, LVGL 9.4): status (TOS, RAM, CPU, WiFi, time),
   networks, password, Bluetooth, pairing, floppy, disk images. While the ST
   runs it's opened by the corner long-press, the emulator pauses, and
-  changing TOS/RAM restarts the ST ("Restart Atari"), the CPU speed applies
-  at once, "Reset Atari" cold-resets it. `CONFIG_EMU_AUTOSTART` is off by default.
+  changing TOS/RAM restarts the ST ("Restart Atari"), the CPU speed (Tab5)
+  applies at once, "Reset Atari" cold-resets it. `CONFIG_EMU_AUTOSTART` is off by default.
 
 ### The emulator core (`components/atari_st`)
 
@@ -140,6 +141,11 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
   sets the speed; Fastest aims the frame's emulation at 85% of its period
   (`FASTEST_SHARE`), slowing down by half the gap, speeding up by an eighth,
   8 to 256 MHz. The setting is `live` (no restart). Console: `C <0|1|2>`.
+  **Tab5 only** (`SETTINGS_CPU_CHOICE`, `settings.h`): the MaTouch build has
+  no CPU row or `C` command, ignores the NVS `cpu` key and runs at 8 MHz.
+  It has no time to spare: 16 MHz ran at ~45% of real time (6.7 vs 7.2 MHz
+  worth of 68000 work per second, for half-speed timers, sound and input),
+  Fastest never left 8 MHz.
 - `mem.c` memory map, `io.c` I/O map (unmapped I/O raises bus errors; TOS
   probes hardware that way), `mfp.c`, `acia.c` (IKBD, clock from `time()`),
   `video.c` (multisync: the monitor follows the mode), `blitter.c`,
@@ -167,7 +173,7 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
 ### Persistent state
 
 - NVS `atari`: `tos` (0/1), `ram_kb`, `rez` (last desktop resolution),
-  `cpu` (0 8 MHz, 1 16 MHz, 2 Fastest).
+  `cpu` (0 8 MHz, 1 16 MHz, 2 Fastest; read on the Tab5 only).
 - NVS `floppy`: `disk_a`, `disk_b` (file names), `empty_n` (last EMPTYnnnn).
 - NVS `blehid`: `known` (paired devices); NimBLE keeps bonds itself. Shared
   with the Mac firmware (same NVS partition): pairings and WiFi survive
@@ -274,7 +280,7 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
   8 MHz 99-103%, core 1 ~40% (up to 53%), ~5 min; 16 MHz 99-101%, core 1 up
   to 93%, ~2 3/4 min; Fastest 99-101%, 15-20 MHz in the drawing tests.
   MaTouch 8 MHz 51-101% (~78% average), core 1 ~90%, ~6 1/2 min; 16 MHz
-  ~45% on the desktop.
+  ~45% on the desktop (why its build is now 8 MHz only).
 - **On the board:** status via the web API, screenshots via the console,
   the setup screen via `t x y` touches. Things that only the user can see
   (the panel itself, touch feel, audio) need them to check.
@@ -290,8 +296,9 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
 - `docs/images/web.png` and `floppy.png` show the older wording of the drop
   area and the floppy page (see Web): retake them when the ST is on the
   board again (`../esp32emu/CLAUDE.md`, README screenshots).
-- README images: `setup-cpu.png` (the MaTouch's setup screen with the CPU
-  row; `setup.png`, without it, is no longer shown), `gembench.png` (8 MHz,
+- README images: `setup.png` (the MaTouch's setup screen: two rows, no CPU
+  choice there; checked identical to a capture on 2026-10-17; the old
+  `setup-cpu.png` with a MaTouch CPU row is gone), `gembench.png` (8 MHz,
   host), `gembench-16mhz.png` and `gembench-fastest.png` (Tab5),
   `tab5-setup.png`, `tab5-desktop.png` (the Tab5's whole 1280x720 picture).
 - Floppy timing is about 10x faster than a real drive (2 ms per sector).

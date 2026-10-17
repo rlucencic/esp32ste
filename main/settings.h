@@ -1,6 +1,17 @@
 #pragma once
 
 #include <stdint.h>
+#include "sdkconfig.h"
+
+/* A faster 68000 only on the Tab5: the MaTouch has no time to spare at
+ * 8 MHz (16 MHz ran at ~45% of real time, Fastest never left 8 MHz), so
+ * its build stays at 8 MHz, without the CPU choice
+ */
+#if CONFIG_IDF_TARGET_ESP32P4
+#define SETTINGS_CPU_CHOICE 1
+#else
+#define SETTINGS_CPU_CHOICE 0
+#endif
 
 /* Machine settings kept in NVS (defaults from menuconfig) */
 typedef struct {

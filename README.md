@@ -2,7 +2,7 @@
 
 <p align="center">
   <b>An Atari STE on a 7-inch ESP32-S3 touch-screen board or an M5Stack Tab5.</b><br>
-  68000 at 8 MHz, 16 MHz or as fast as the board goes, TOS 1.62 / 2.06, up to 4 MB, floppies, hard disk, Bluetooth keyboard and mouse.
+  68000 at 8 MHz (on the Tab5 also 16 MHz or as fast as it goes), TOS 1.62 / 2.06, up to 4 MB, floppies, hard disk, Bluetooth keyboard and mouse.
 </p>
 
 <p align="center">
@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/setup-cpu.png" width="49%" alt="Setup screen: TOS, memory and CPU speed choice, WiFi, Bluetooth and floppy buttons">
+  <img src="docs/images/setup.png" width="49%" alt="Setup screen: TOS and memory choice, WiFi, Bluetooth and floppy buttons">
   <img src="docs/images/gembench.png" width="49%" alt="GEMBench 6.31 at 8 MHz: 107% of a real STE">
   <br>
   <img src="docs/images/gembench-16mhz.png" width="49%" alt="GEMBench 6.31 with the 68000 at 16 MHz on the Tab5: 205% of a real STE">
@@ -41,11 +41,11 @@ Spectrum) and [esp32cbm](https://github.com/rlucencic/esp32cbm) (Commodore
 ## Features
 
 **The machine**
-- 68000 ([Musashi](https://github.com/kstenerud/Musashi) core) at **8 MHz** like an STE, or faster
-  like an accelerator board: **16 MHz**, or **Fastest**, as fast as the board
-  keeps real time (16–20 MHz in GEM on the Tab5, far more in tight loops). The
+- 68000 ([Musashi](https://github.com/kstenerud/Musashi) core) at **8 MHz** like an STE. On the
+  Tab5 also faster, like an accelerator board: **16 MHz**, or **Fastest**, as
+  fast as it keeps real time (16–20 MHz in GEM, far more in tight loops). The
   rest of the machine keeps the STE's timing; the choice applies at once,
-  no restart
+  no restart. The MaTouch has no time to spare for it and stays at 8 MHz
 - Real-time speed at 8 MHz: 100% on the Tab5, about 80–85% on the MaTouch
 - TOS 1.62 or 2.06, chosen on the setup screen
 - 512 KB, 1 MB or 4 MB of RAM
@@ -64,7 +64,7 @@ Spectrum) and [esp32cbm](https://github.com/rlucencic/esp32cbm) (Commodore
 **Around it**
 - **Setup screen** before the ST starts, and any time while it runs (hold
   the top-right corner for 2 seconds): WiFi, Bluetooth pairing, TOS, RAM,
-  CPU speed, floppy disks, reset
+  CPU speed (Tab5), floppy disks, reset
 - **Bluetooth keyboard and mouse** (BLE HID), with battery levels; on the
   Tab5 also M5Stack's Tab5 Keyboard
 - **Web page** at `http://atari-ste.local`: drop `.ST`, `.MSA` or `.ZIP` files
@@ -91,7 +91,8 @@ Spectrum) and [esp32cbm](https://github.com/rlucencic/esp32cbm) (Commodore
 
 On the MaTouch the ST picture is 960×600, on the Tab5 1152×720 (high
 resolution: 640×400 shown 1.8 times), centred on the panel. The setup
-screen is the same on both, laid out for each panel.
+screen is the same on both, laid out for each panel; the Tab5's has the CPU
+speed choice too.
 
 <p align="center">
   <img src="docs/images/tab5-setup.png" width="49%" alt="The setup screen on the Tab5's 1280×720 panel: TOS, memory and CPU speed choice">
@@ -135,7 +136,7 @@ own flash; WiFi networks are remembered by its ESP32-C6.
    reachable.
 2. Tap **Bluetooth**, put your keyboard or mouse into pairing mode, and tap
    it in the list. Paired devices reconnect by themselves from then on.
-3. Choose **TOS**, **memory** and the **CPU** speed, then tap **Start Atari**.
+3. Choose **TOS**, **memory** and, on the Tab5, the **CPU** speed, then tap **Start Atari**.
 
 ## Using it
 
@@ -143,7 +144,7 @@ own flash; WiFi networks are remembered by its ESP32-C6.
 |---|---|
 | Get back to the setup screen | Hold the top-right corner of the screen for 2 s |
 | Change TOS or RAM | On the setup screen; **Restart Atari** applies it |
-| Change the CPU speed | On the setup screen, at once: 8 MHz for exact STE timing (games, demos), 16 MHz or Fastest for GEM and applications |
+| Change the CPU speed (Tab5) | On the setup screen, at once: 8 MHz for exact STE timing (games, demos), 16 MHz or Fastest for GEM and applications |
 | Insert a floppy | Setup screen → **Floppy** → **Insert disk**, or **Insert into…** on the web page |
 | Make a blank floppy | Setup screen → **Floppy** → **New empty disk** |
 | Copy disk images from a computer | Open `http://atari-ste.local` and drop them onto the page (ZIP files are unpacked) |
@@ -218,7 +219,7 @@ flowchart LR
   [evansm7's fork](https://github.com/evansm7/Musashi) with static opcode
   tables and the 68000 bus error frame.
 
-The 68000 can run faster than the rest of the machine: per scanline it gets
+On the Tab5 the 68000 can run faster than the rest of the machine: per scanline it gets
 the STE's 8 MHz worth of cycles times the CPU speed, while video, timers,
 sound, the blitter and the floppy keep counting the STE's bus cycles. On
 Fastest the board measures each frame and raises the speed as long as the
@@ -254,10 +255,11 @@ and the lessons learned along the way.
   images are read-only.
 - No FPU, ACSI, MIDI or Mega STE hardware.
 - Floppy access is faster than a real drive, which a few loaders may notice.
-- On the MaTouch, about 80–85% of real speed on the desktop at 8 MHz, and
-  demanding demos run slower; 16 MHz there gives about 45% (Fastest stays
-  at 8 MHz). The Tab5 keeps 100% at 8 and 16 MHz.
-- 16 MHz and Fastest change a program's timing as an accelerator would:
+- On the MaTouch, about 80–85% of real speed on the desktop, and demanding
+  demos run slower. It has no time to spare for a faster 68000 (16 MHz ran
+  at about 45% of real time), so it stays at 8 MHz. The Tab5 keeps 100% at
+  8 and 16 MHz.
+- 16 MHz and Fastest (Tab5) change a program's timing as an accelerator would:
   games and demos that count on an 8 MHz 68000 can misbehave.
 
 ## Credits

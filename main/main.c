@@ -131,7 +131,8 @@ static void every_second(void)
  * 8 and 16 MHz are fixed. Fastest: as fast as the frames still come in
  * time, the emulation taking up to FASTEST_SHARE of each frame's period on
  * core 1 (the rest: frames that take longer, the other tasks there). It
- * slows down quickly and speeds up slowly; never below 8 MHz.
+ * slows down quickly and speeds up slowly; never below 8 MHz. The MaTouch
+ * runs at 8 MHz only (SETTINGS_CPU_CHOICE).
  */
 #define FASTEST_SHARE   85                          /* % of the frame period */
 #define FASTEST_MAX     (32 * ST_CPU_SPEED_8MHZ)    /* 256 MHz */
@@ -346,6 +347,7 @@ static void ram_set(int i)
     }
 }
 
+#if SETTINGS_CPU_CHOICE
 /* The 68000's speed: changed right away, no restart */
 static const char *const cpu_names[] = { "8 MHz", "16 MHz", "Fastest", "" };
 
@@ -361,11 +363,14 @@ static void cpu_set(int i)
         settings_save();
     }
 }
+#endif
 
 static const emu_choice_t choices[] = {
     { "System", tos_names, tos_get, tos_set, false },
     { "Memory", ram_names, ram_get, ram_set, false },
+#if SETTINGS_CPU_CHOICE
     { "CPU", cpu_names, cpu_get, cpu_set, true },        /* live */
+#endif
 };
 
 /* ---- Floppy disks ---- */
@@ -477,7 +482,7 @@ static void console_info(char *buf, size_t len)
 /*   k <hex scancode>   tap a key
  *   m <dx> <dy> <btn>  move the mouse, btn bit 0 left, bit 1 right
  *   R <tos> <ram KB>   restart with TOS 0 = 1.62, 1 = 2.06 and that much RAM
- *   C <cpu>            68000 speed: 0 = 8 MHz, 1 = 16 MHz, 2 = fastest
+ *   C <cpu>            68000 speed: 0 = 8 MHz, 1 = 16 MHz, 2 = fastest (Tab5)
  */
 static bool console_command(const char *line)
 {
@@ -495,9 +500,11 @@ static bool console_command(const char *line)
         st_ikbd_mouse(dx, dy, buttons & 1, buttons & 2);
         return true;
     }
+#if SETTINGS_CPU_CHOICE
     case 'C':
         cpu_set(atoi(line + 1));
         return true;
+#endif
     case 'R': {
         int tos = 0, ram_kb = 0;
         if (sscanf(line + 1, "%d %d", &tos, &ram_kb) == 2 && (tos == 0 || tos == 1) &&
@@ -537,7 +544,7 @@ static const emu_machine_t machine = {
     .hid_key = hid_key,
     .hid_mouse = hid_mouse,
     .choices = choices,
-    .choice_count = 3,
+    .choice_count = sizeof(choices) / sizeof(choices[0]),
     .disks = &disks,
     .status = status,
     .console_info = console_info,
