@@ -26,8 +26,9 @@ touch panel, and a web page on your network, handle everything else.
 
 It's the sibling of [esp32mac](https://github.com/rlucencic/esp32mac)
 (Macintosh Plus, SE, Classic), [esp32cpc](https://github.com/rlucencic/esp32cpc)
-(Amstrad CPC) and [esp32zx](https://github.com/rlucencic/esp32zx) (ZX
-Spectrum), on the same board; all four are built on the shared runtime
+(Amstrad CPC), [esp32zx](https://github.com/rlucencic/esp32zx) (ZX
+Spectrum) and [esp32cbm](https://github.com/rlucencic/esp32cbm) (Commodore
+64 and 128), on the same board; all five are built on the shared runtime
 [esp32emu](https://github.com/rlucencic/esp32emu).
 
 ## Features
@@ -176,8 +177,9 @@ flowchart LR
   floppy drives and status.
 - **[esp32emu](https://github.com/rlucencic/esp32emu)** (shared with
   [esp32mac](https://github.com/rlucencic/esp32mac),
-  [esp32cpc](https://github.com/rlucencic/esp32cpc) and
-  [esp32zx](https://github.com/rlucencic/esp32zx)): the board runtime (display, touch, SD card, WiFi,
+  [esp32cpc](https://github.com/rlucencic/esp32cpc),
+  [esp32zx](https://github.com/rlucencic/esp32zx) and
+  [esp32cbm](https://github.com/rlucencic/esp32cbm)): the board runtime (display, touch, SD card, WiFi,
   Bluetooth, setup screen, web page, serial console) and the 68000 core,
   Musashi from [evansm7's fork](https://github.com/evansm7/Musashi) with
   static opcode tables and the 68000 bus error frame.
