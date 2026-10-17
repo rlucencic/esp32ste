@@ -57,7 +57,9 @@ Console commands (`../esp32emu/components/emu/include/emu/console.h`): `s` /
 `L` dump the ST screen / the whole LCD (base64, read by the tool), `r` cold
 reset, `F <drive> [name|+]` insert / eject / make a blank disk, `t x y [ms]`
 simulated touch (use it to drive the setup screen remotely; one tap per
-`send` call), `i` machine state; the ST's own (in `main/main.c`): `k <hex>`
+`send` call), `i` machine state, `x <ms>` hold off core 0's interrupts (tests
+the LCD's recovery: "LCD output was out of step" in the log); the ST's own
+(in `main/main.c`): `k <hex>`
 tap a key, `m dx dy btn` mouse, `R <tos 0|1> <ram KB>` restart with that
 TOS/RAM, `C <0|1|2>` CPU 8 MHz / 16 MHz / Fastest (live, Tab5 only). Touches
 are in the board's picture pixels: Start is `t 850 532` on the MaTouch,
