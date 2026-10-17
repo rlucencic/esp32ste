@@ -1,12 +1,13 @@
 <h1 align="center">esp32ste</h1>
 
 <p align="center">
-  <b>An Atari STE on a 7-inch ESP32-S3 touch-screen board.</b><br>
+  <b>An Atari STE on a 7-inch ESP32-S3 touch-screen board or an M5Stack Tab5.</b><br>
   68000, TOS 1.62 / 2.06, up to 4 MB, floppies, hard disk, Bluetooth keyboard and mouse.
 </p>
 
 <p align="center">
   <img alt="ESP32-S3" src="https://img.shields.io/badge/ESP32--S3-N16R8-e7352c">
+  <img alt="ESP32-P4" src="https://img.shields.io/badge/ESP32--P4-M5Stack%20Tab5-e7352c">
   <img alt="ESP-IDF" src="https://img.shields.io/badge/ESP--IDF-v5.5-blue">
   <img alt="LVGL" src="https://img.shields.io/badge/LVGL-9.4-5e48e8">
   <img alt="68000" src="https://img.shields.io/badge/CPU-Musashi%2068000-555">
@@ -18,8 +19,8 @@
   <img src="docs/images/gembench.png" width="49%" alt="GEMBench 6.31 results in the emulator">
 </p>
 
-esp32ste turns the Makerfabs MaTouch ESP32-S3 Parallel TFT with Touch 7"
-into an Atari STE. The ST picture fills the 1024×600 screen, a Bluetooth
+esp32ste turns the Makerfabs MaTouch ESP32-S3 Parallel TFT with Touch 7", or an
+M5Stack Tab5, into an Atari STE. The ST picture fills the screen's height, a Bluetooth
 keyboard and mouse stand in for the ST's own, the microSD card is hard disk
 C:, and floppy disk images go in drives A: and B:. A setup screen on the
 touch panel, and a web page on your network, handle everything else.
@@ -28,7 +29,7 @@ It's the sibling of [esp32mac](https://github.com/rlucencic/esp32mac)
 (Macintosh Plus, SE, Classic), [esp32cpc](https://github.com/rlucencic/esp32cpc)
 (Amstrad CPC), [esp32zx](https://github.com/rlucencic/esp32zx) (ZX
 Spectrum) and [esp32cbm](https://github.com/rlucencic/esp32cbm) (Commodore
-64 and 128), on the same board; all five are built on the shared runtime
+64 and 128), on the same boards; all five are built on the shared runtime
 [esp32emu](https://github.com/rlucencic/esp32emu).
 
 ## Features
@@ -66,13 +67,13 @@ Spectrum) and [esp32cbm](https://github.com/rlucencic/esp32cbm) (Commodore
 
 ## Hardware
 
-| | |
-|---|---|
-| Board | Makerfabs MaTouch ESP32-S3 Parallel TFT with Touch 7" |
-| Module | ESP32-S3-WROOM-1-N16R8: 16 MB flash, 8 MB octal PSRAM |
-| Screen | 1024×600 RGB, GT911 capacitive touch |
-| Storage | microSD card (FAT32) |
-| Input | any BLE keyboard and mouse |
+| | Makerfabs MaTouch ESP32-S3 7" | M5Stack Tab5 |
+|---|---|---|
+| Chip | ESP32-S3-WROOM-1-N16R8: 16 MB flash, 8 MB octal PSRAM | ESP32-P4 (RISC-V, 360 MHz): 16 MB flash, 32 MB PSRAM; an ESP32-C6 for WiFi and Bluetooth |
+| Screen | 7" 1024×600 RGB, GT911 capacitive touch | 5" 1280×720 MIPI-DSI, capacitive touch, held landscape |
+| Storage | microSD card (FAT32 or exFAT) | microSD card (FAT32 or exFAT) |
+| Input | any BLE keyboard and mouse | any BLE keyboard and mouse, or the Tab5 Keyboard |
+| Sound | a speaker on the MAX98357A output (optional, `menuconfig`) | the built-in speaker (ES8388) |
 
 ## Getting started
 
@@ -82,7 +83,7 @@ Spectrum) and [esp32cbm](https://github.com/rlucencic/esp32cbm) (Commodore
 - TOS ROM images, which are copyrighted and **not included**: dumps of your
   own STE's TOS 1.62 and/or TOS 2.06 (256 KB each). Put them in `roms/` as
   `tos162.img` and `tos206.img`.
-- A microSD card, FAT32
+- A microSD card, FAT32 or exFAT
 - [esp32emu](https://github.com/rlucencic/esp32emu), the shared board runtime, checked out next to
   this project (`../esp32emu`)
 
@@ -93,6 +94,10 @@ git clone https://github.com/rlucencic/esp32emu.git     # the shared runtime, ne
 git clone https://github.com/rlucencic/esp32ste.git && cd esp32ste
 idf.py build
 idf.py -p /dev/cu.usbmodem… flash      # app and both TOS images
+
+# or for the M5Stack Tab5 (its own build folder and settings):
+idf.py -B build-tab5 -DIDF_TARGET=esp32p4 -DSDKCONFIG=build-tab5/sdkconfig build
+idf.py -B build-tab5 -DIDF_TARGET=esp32p4 -DSDKCONFIG=build-tab5/sdkconfig -p /dev/cu.usbmodem… flash
 ```
 
 Later updates only need `idf.py -p … app-flash`.
@@ -163,7 +168,7 @@ flowchart LR
   PSRAM[(PSRAM<br>ST RAM · framebuffer)]
   SD[(microSD<br>C: · floppies/)]
   EMU <--> PSRAM
-  PRES --> LCD[1024×600 panel]
+  PRES --> LCD[1024×600 or 1280×720 panel]
   PSRAM --> PRES
   BLE -- keys, mouse --> EMU
   EMU <--> SD
@@ -206,6 +211,10 @@ and the lessons learned along the way.
 
 ## Limitations
 
+- The M5Stack Tab5 port is new: the machine starts there and runs at full
+  speed at its start-up screen, with core 1 far less busy than on the S3,
+  but sound, touch, Bluetooth and the Tab5 Keyboard have not been tried on
+  it by hand yet.
 - `.STX` (Pasti) images of copy-protected originals don't work; `.MSA`
   images are read-only.
 - No FPU, ACSI, MIDI or Mega STE hardware.

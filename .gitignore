@@ -1,8 +1,10 @@
 build/
+build-tab5/
 managed_components/
 sdkconfig
 sdkconfig.old
 dependencies.lock
+dependencies.lock.esp32p4
 components/musashi/test/build/
 roms/*.img
 components/atari_st/host/build/
