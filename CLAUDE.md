@@ -9,8 +9,9 @@ screen, and a web page for disk images and live status. ESP-IDF v5.5.4, C.
 
 The board side (tasks, LCD, touch, SD, WiFi, BLE, setup screen, web page,
 console) and the 68000 core are the shared library in `../esp32emu`, also
-used by `../esp32mac`, `../esp32cpc`, `../esp32zx` and `../esp32cbm`. See
-its CLAUDE.md; changes there need all five projects built, for both boards.
+used by `../esp32mac`, `../esp32cpc`, `../esp32zx`, `../esp32cbm` and
+`../esp32xl`. See its CLAUDE.md; changes there need all six projects built,
+for both boards.
 
 ## Hardware
 
@@ -125,8 +126,9 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
 - **Setup screen** (shared, LVGL 9.4): status (TOS, RAM, CPU, WiFi, time),
   networks, password, Bluetooth, pairing, floppy, disk images. While the ST
   runs it's opened by the corner long-press, the emulator pauses, and
-  changing TOS/RAM restarts the ST ("Restart Atari"), the CPU speed (Tab5)
-  applies at once, "Reset Atari" cold-resets it. `CONFIG_EMU_AUTOSTART` is off by default.
+  changing TOS/RAM restarts the ST ("Restart"), the CPU speed (Tab5)
+  applies at once, "Reset" cold-resets it ("Start" before the first start,
+  "Back" while paused). `CONFIG_EMU_AUTOSTART` is off by default.
 
 ### The emulator core (`components/atari_st`)
 

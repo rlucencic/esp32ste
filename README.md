@@ -34,9 +34,10 @@ touch panel, and a web page on your network, handle everything else.
 It's the sibling of [esp32mac](https://github.com/rlucencic/esp32mac)
 (Macintosh Plus, SE, Classic), [esp32cpc](https://github.com/rlucencic/esp32cpc)
 (Amstrad CPC), [esp32zx](https://github.com/rlucencic/esp32zx) (ZX
-Spectrum) and [esp32cbm](https://github.com/rlucencic/esp32cbm) (Commodore
-64 and 128), on the same boards; all five are built on the shared runtime
-[esp32emu](https://github.com/rlucencic/esp32emu).
+Spectrum), [esp32cbm](https://github.com/rlucencic/esp32cbm) (Commodore
+64 and 128) and [esp32xl](https://github.com/rlucencic/esp32xl) (Atari
+800XL and 130XE), on the same boards; all six are built on the shared
+runtime [esp32emu](https://github.com/rlucencic/esp32emu).
 
 ## Features
 
@@ -136,14 +137,14 @@ own flash; WiFi networks are remembered by its ESP32-C6.
    reachable.
 2. Tap **Bluetooth**, put your keyboard or mouse into pairing mode, and tap
    it in the list. Paired devices reconnect by themselves from then on.
-3. Choose **TOS**, **memory** and, on the Tab5, the **CPU** speed, then tap **Start Atari**.
+3. Choose **TOS**, **memory** and, on the Tab5, the **CPU** speed, then tap **Start**.
 
 ## Using it
 
 | To | Do |
 |---|---|
 | Get back to the setup screen | Hold the top-right corner of the screen for 2 s |
-| Change TOS or RAM | On the setup screen; **Restart Atari** applies it |
+| Change TOS or RAM | On the setup screen; **Restart** applies it |
 | Change the CPU speed (Tab5) | On the setup screen, at once: 8 MHz for exact STE timing (games, demos), 16 MHz or Fastest for GEM and applications |
 | Insert a floppy | Setup screen → **Floppy** → **Insert disk**, or **Insert into…** on the web page |
 | Make a blank floppy | Setup screen → **Floppy** → **New empty disk** |
@@ -211,8 +212,9 @@ flowchart LR
 - **[esp32emu](https://github.com/rlucencic/esp32emu)** (shared with
   [esp32mac](https://github.com/rlucencic/esp32mac),
   [esp32cpc](https://github.com/rlucencic/esp32cpc),
-  [esp32zx](https://github.com/rlucencic/esp32zx) and
-  [esp32cbm](https://github.com/rlucencic/esp32cbm)): the board runtime for
+  [esp32zx](https://github.com/rlucencic/esp32zx),
+  [esp32cbm](https://github.com/rlucencic/esp32cbm) and
+  [esp32xl](https://github.com/rlucencic/esp32xl)): the board runtime for
   both boards (display, touch, SD card, WiFi, Bluetooth, setup screen, web
   page, serial console; on the Tab5 its ESP32-C6 radio, keyboard and
   charging) and the 68000 core, Musashi from
