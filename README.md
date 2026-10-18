@@ -71,8 +71,8 @@ on the same boards; all eight are built on the shared runtime
 - **Bluetooth keyboard and mouse** (BLE HID), with battery levels; on the
   Tab5 also M5Stack's Tab5 Keyboard
 - **Web page** at `http://atari-ste.local`: drop `.ST`, `.MSA` or `.ZIP` files
-  onto it to put them on the SD card, and watch the machine, drives, board
-  and Bluetooth devices live
+  onto it (with a progress bar) to put them on the SD card, and watch the
+  machine, drives, board and Bluetooth devices live
 - **Sound** on the board's speaker: on the Tab5 its built-in one (on by
   default), on the MaTouch an optional speaker on its amplifier output
   (`menuconfig`)
