@@ -2,8 +2,10 @@
  * STE machine: reset, frame loop and the GLUE interrupt logic.
  */
 #include <string.h>
+#include <stdio.h>
 #include "m68k.h"
 #include "st_internal.h"
+#include "emudbg.h"
 
 /* TOS system variables */
 #define SV_MEMVALID     0x420
@@ -187,6 +189,47 @@ static void reset_instruction(void)
     st_io_reset();
 }
 
+/* ---- The debugger (emudbg.h) ---- */
+
+static uint8_t dbg_peek(void *ctx, uint32_t a)
+{
+    (void)ctx;
+    return st_peek8(a);
+}
+
+static void dbg_poke(void *ctx, uint32_t a, uint8_t v)
+{
+    (void)ctx;
+    st_poke8(a, v);
+}
+
+static emudbg_cpu_t s_dbg_cpus[] = {
+    { .name = "68000", .arch = &emudbg_arch_68000, .peek = dbg_peek, .poke = dbg_poke },
+};
+
+static void dbg_where(char *buf, size_t len)
+{
+    snprintf(buf, len, "frame %lu, line %d", (unsigned long)st.frames, st.line);
+}
+
+static void dbg_screen(int *width, int *height)
+{
+    st_screen_mode_t m;
+    st_get_screen_mode(&m);
+    *width = m.width;
+    *height = m.height;
+}
+
+static emudbg_machine_t s_dbg = {
+    .name = "Atari STE",
+    .cpus = s_dbg_cpus,
+    .cpu_count = 1,
+    .where = dbg_where,
+    .reset = st_reset,
+    .screen = dbg_screen,
+    .render_line = st_render_line_rgb565,
+};
+
 bool st_init(const st_config_t *config)
 {
     const uint8_t *tos = config->tos;
@@ -236,6 +279,7 @@ bool st_init(const st_config_t *config)
             st.any_resolution ? ", any resolution" : "");
 
     st_reset();
+    emudbg_set_machine(&s_dbg);
     return true;
 }
 

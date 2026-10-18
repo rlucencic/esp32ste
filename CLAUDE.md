@@ -255,6 +255,13 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
 
 ## Testing
 
+- **Debugger** (esp32emu's `components/emudbg`, the VS Code extension
+  `../esp32emu-vscode`): the board serves it on port 6502;
+  `ST_DEBUG=<port> build/st_host ...` serves it from the host build, which
+  then runs in real time until killed. The CPUs (68000), `where()`,
+  the screen and typing are described in `components/atari_st/st.c` (`emudbg_set_machine()`
+  at every init).
+
 - **Host build** of the STE core: `make -C components/atari_st/host`, then
   `build/st_host <tos.img> [frames] [out.ppm] [ram_kb] [mono]`. Runs far
   faster than real time. Environment options: `ST_ANYRES`, `ST_REZ=0|1|2`,

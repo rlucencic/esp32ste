@@ -11,6 +11,7 @@
 #include <time.h>
 #include "st.h"
 #include "m68k.h"
+#include "emudbg.h"
 
 /* Disassemble `count` instructions at `pc` */
 static void disassemble(uint32_t pc, int count)
@@ -416,6 +417,10 @@ int main(int argc, char **argv)
     extern bool st_debug_blitter;
     st_debug_blitter = getenv("ST_BLITLOG") != NULL;
     bool quiet = getenv("ST_QUIET") != NULL;
+    /* ST_DEBUG=<port>: serve the debugger (esp32emu's docs/debugger.md) on
+     * 127.0.0.1:<port> and run in real time until killed
+     */
+    emudbg_host_run("ST_DEBUG", st_run_frame, 50);
 
     if (getenv("ST_WAV")) {
         wav = fopen(getenv("ST_WAV"), "wb");
