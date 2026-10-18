@@ -9,9 +9,9 @@ screen, and a web page for disk images and live status. ESP-IDF v5.5.4, C.
 
 The board side (tasks, LCD, touch, SD, WiFi, BLE, setup screen, web page,
 console) and the 68000 core are the shared library in `../esp32emu`, also
-used by `../esp32mac`, `../esp32cpc`, `../esp32zx`, `../esp32cbm` and
-`../esp32xl`. See its CLAUDE.md; changes there need all six projects built,
-for both boards.
+used by `../esp32mac`, `../esp32cpc`, `../esp32zx`, `../esp32cbm`,
+`../esp32xl`, `../esp32msx` and `../esp32gs`. See its CLAUDE.md; changes
+there need all eight projects built, for both boards.
 
 ## Hardware
 
