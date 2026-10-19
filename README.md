@@ -32,13 +32,18 @@ C:, and floppy disk images go in drives A: and B:. A setup screen on the
 touch panel, and a web page on your network, handle everything else.
 
 It's the sibling of [esp32mac](https://github.com/rlucencic/esp32mac)
-(Macintosh Plus, SE, Classic), [esp32cpc](https://github.com/rlucencic/esp32cpc)
-(Amstrad CPC), [esp32zx](https://github.com/rlucencic/esp32zx) (ZX
-Spectrum), [esp32cbm](https://github.com/rlucencic/esp32cbm) (Commodore
-64 and 128), [esp32xl](https://github.com/rlucencic/esp32xl) (Atari
-800XL and 130XE), [esp32msx](https://github.com/rlucencic/esp32msx) (MSX1
-and MSX2) and [esp32gs](https://github.com/rlucencic/esp32gs) (Apple IIGS),
-on the same boards; all eight are built on the shared runtime
+(Macintosh Plus, SE, Classic),
+[esp32mac2](https://github.com/rlucencic/esp32mac2) (Macintosh LC and II,
+Tab5 only), [esp32mac3](https://github.com/rlucencic/esp32mac3) (Macintosh
+LC II and LC III, Tab5 only),
+[esp32cpc](https://github.com/rlucencic/esp32cpc) (Amstrad CPC),
+[esp32zx](https://github.com/rlucencic/esp32zx) (ZX Spectrum),
+[esp32cbm](https://github.com/rlucencic/esp32cbm) (Commodore 64 and 128),
+[esp32xl](https://github.com/rlucencic/esp32xl) (Atari 800XL and 130XE),
+[esp32msx](https://github.com/rlucencic/esp32msx) (MSX1 and MSX2),
+[esp32gs](https://github.com/rlucencic/esp32gs) (Apple IIGS) and
+[esp32coco](https://github.com/rlucencic/esp32coco) (Tandy Color Computer 2
+and 3); all are built on the shared runtime
 [esp32emu](https://github.com/rlucencic/esp32emu).
 
 ## Features
@@ -213,12 +218,15 @@ flowchart LR
   floppy drives and status.
 - **[esp32emu](https://github.com/rlucencic/esp32emu)** (shared with
   [esp32mac](https://github.com/rlucencic/esp32mac),
+  [esp32mac2](https://github.com/rlucencic/esp32mac2),
+  [esp32mac3](https://github.com/rlucencic/esp32mac3),
   [esp32cpc](https://github.com/rlucencic/esp32cpc),
   [esp32zx](https://github.com/rlucencic/esp32zx),
   [esp32cbm](https://github.com/rlucencic/esp32cbm),
   [esp32xl](https://github.com/rlucencic/esp32xl),
-  [esp32msx](https://github.com/rlucencic/esp32msx) and
-  [esp32gs](https://github.com/rlucencic/esp32gs)): the board runtime for
+  [esp32msx](https://github.com/rlucencic/esp32msx),
+  [esp32gs](https://github.com/rlucencic/esp32gs) and
+  [esp32coco](https://github.com/rlucencic/esp32coco)): the board runtime for
   both boards (display, touch, SD card, WiFi, Bluetooth, setup screen, web
   page, serial console; on the Tab5 its ESP32-C6 radio, keyboard and
   charging) and the 68000 core, Musashi from
