@@ -15,6 +15,11 @@
 </p>
 
 <p align="center">
+  <b>Work in progress:</b> not everything has been tested, and games and demos may or may not
+  work satisfactorily.
+</p>
+
+<p align="center">
   <img src="docs/images/setup.png" width="49%" alt="Setup screen: TOS and memory choice, WiFi, Bluetooth and floppy buttons">
   <img src="docs/images/gembench.png" width="49%" alt="GEMBench 6.31 at 8 MHz: 107% of a real STE">
   <br>
