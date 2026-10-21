@@ -48,8 +48,9 @@ LC II and LC III, Tab5 only),
 [esp32msx](https://github.com/rlucencic/esp32msx) (MSX1 and MSX2),
 [esp32gs](https://github.com/rlucencic/esp32gs) (Apple IIGS),
 [esp32coco](https://github.com/rlucencic/esp32coco) (Tandy Color Computer 2
-and 3) and
-[esp32pc](https://github.com/rlucencic/esp32pc) (IBM PC/XT and PC/AT);
+and 3),
+[esp32pc](https://github.com/rlucencic/esp32pc) (IBM PC/XT and PC/AT) and
+[esp32ami](https://github.com/rlucencic/esp32ami) (Amiga 500, 2000 and 600);
 all are built on the shared runtime
 [esp32emu](https://github.com/rlucencic/esp32emu).
 
@@ -233,8 +234,9 @@ flowchart LR
   [esp32xl](https://github.com/rlucencic/esp32xl),
   [esp32msx](https://github.com/rlucencic/esp32msx),
   [esp32gs](https://github.com/rlucencic/esp32gs),
-  [esp32coco](https://github.com/rlucencic/esp32coco) and
-  [esp32pc](https://github.com/rlucencic/esp32pc)): the board runtime for
+  [esp32coco](https://github.com/rlucencic/esp32coco),
+  [esp32pc](https://github.com/rlucencic/esp32pc) and
+  [esp32ami](https://github.com/rlucencic/esp32ami)): the board runtime for
   both boards (display, touch, SD card, WiFi, Bluetooth, setup screen, web
   page, serial console; on the Tab5 its ESP32-C6 radio, keyboard and
   charging) and the 68000 core, Musashi from
