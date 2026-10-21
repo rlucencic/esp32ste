@@ -121,8 +121,10 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
   `start()` (TOS from its partition, `st_init()`), the setup screen choices
   (TOS, RAM; CPU speed, live, Tab5 only), `run_frame()` (the CPU speed, Fastest's
   controller), the floppy drives (`disks_config_t`), key map (HID usages ->
-  ST scancodes, both Controls/Alternates on one ST key), status rows and
-  console commands; `every_second()` saves the desktop resolution.
+  ST scancodes, both Controls/Alternates on one ST key), the mouse and
+  esp32emu's touchpad (`.touchpad = hid_mouse`: a count a pixel, as GEM
+  moves the pointer in every resolution), status rows and console
+  commands; `every_second()` saves the desktop resolution.
 - **Setup screen** (shared, LVGL 9.4): status (TOS, RAM, CPU, WiFi, time),
   networks, password, Bluetooth, pairing, floppy, disk images. While the ST
   runs it's opened by the corner long-press, the emulator pauses, and
@@ -151,7 +153,9 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
   worth of 68000 work per second, for half-speed timers, sound and input),
   Fastest never left 8 MHz.
 - `mem.c` memory map, `io.c` I/O map (unmapped I/O raises bus errors; TOS
-  probes hardware that way), `mfp.c`, `acia.c` (IKBD, clock from `time()`),
+  probes hardware that way), `mfp.c`, `acia.c` (IKBD, clock from `time()`; its input queue is fed by several
+  tasks, Bluetooth, USB, the Tab5 Keyboard, the touchpad, the console:
+  under a lock),
   `video.c` (multisync: the monitor follows the mode), `blitter.c`,
   `psg.c` + `audio.c` (YM and DMA sound, rendered on another task),
   `fdc.c` (WD1772 + DMA, timed commands, write track for formatting,
@@ -295,6 +299,14 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
 - **On the board:** status via the web API, screenshots via the console,
   the setup screen via `t x y` touches. Things that only the user can see
   (the panel itself, touch feel, audio) need them to check.
+- **Touchpad** (Tab5, 2026-10-21, TOS 1.62 high resolution, `t x y ms x2
+  y2` drags measured on screenshots): 180 panel pixels move the pointer
+  97-100 ST pixels either way, slow or fast; a double tap anywhere opened
+  C:, a tap and a drag moved its window. Two of the first drags (before the
+  queue's lock) went wrong, 170 pixels the wrong way with a stray vertical
+  move; the cause wasn't found (no Bluetooth device was connected, the
+  console's 50 small `m` moves landed exactly), and twelve drags after it
+  were right.
 - Speed: on the MaTouch about 83-85% of a real STE on the TOS 2.06 desktop
   in high resolution, 77-81% with TOS 1.62; on the Tab5 100%.
 - **Free disk space** (web page, under each drive): A: and B: from the
@@ -320,6 +332,15 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
 - Floppy timing is about 10x faster than a real drive (2 ms per sector).
 - Public on GitHub (`github.com/rlucencic/esp32ste`, pushed to `main`).
   Licence: MIT (`LICENSE`), like Musashi.
+- **Clock** (the clock audit, 2026-10-21: `../esp32emu/CLAUDE.md`, To do):
+  on the MaTouch, started before NTP (1970), the cartridge's
+  Tsettime/Tsetdate at reset leave GEMDOS at 1980 (clamped) until the next
+  reset; if TOS passes them on to the IKBD ($1B), `clock_set()` keeps an
+  offset of about +10 years, and after NTP the IKBD would read ~2036 (not
+  confirmed: try in the host build with the time at 1970). A clock set from
+  GEM before NTP is shifted by NTP's step (the offset). GEMDOS counts
+  emulated time after reset: below real time (the MaTouch's ~78%) it falls
+  behind, ~13 minutes an hour.
 
 ## Working with the user
 

@@ -2,13 +2,24 @@
  * MC6850 ACIAs ($FFFC00 keyboard, $FFFC04 MIDI) and the HD6301 IKBD
  * behind the keyboard ACIA: keyboard, mouse, joysticks and its clock.
  *
- * Host input arrives from another task through a lock-free queue and is
- * turned into IKBD packets on the emulation side. IKBD bytes are delivered
- * at the real 7812.5 baud pace.
+ * Host input arrives from other tasks (Bluetooth, USB, the Tab5 Keyboard,
+ * the touchpad, the console) through a queue and is turned into IKBD
+ * packets on the emulation side. IKBD bytes are delivered at the real
+ * 7812.5 baud pace.
  */
 #include <string.h>
 #include <time.h>
 #include "st_internal.h"
+
+#ifdef ESP_PLATFORM
+#include "freertos/FreeRTOS.h"
+static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
+#define LOCK()      portENTER_CRITICAL(&s_lock)
+#define UNLOCK()    portEXIT_CRITICAL(&s_lock)
+#else
+#define LOCK()
+#define UNLOCK()
+#endif
 
 #define ACIA_RDRF           0x01
 #define ACIA_TDRE           0x02
@@ -66,19 +77,22 @@ static struct {
     time_t clock_offset;
 } ikbd;
 
-/* Single producer (host input task), single consumer (emulation) */
+/* Producers on several tasks (taking turns under the lock), one consumer
+ * (the emulation)
+ */
 static input_event_t events[EVENT_QUEUE_SIZE];
 static volatile uint32_t ev_head, ev_tail;
 
 static void push_event(const input_event_t *ev)
 {
+    LOCK();
     uint32_t head = __atomic_load_n(&ev_head, __ATOMIC_RELAXED);
     uint32_t tail = __atomic_load_n(&ev_tail, __ATOMIC_ACQUIRE);
-    if (head - tail >= EVENT_QUEUE_SIZE) {
-        return;     /* full: drop */
+    if (head - tail < EVENT_QUEUE_SIZE) {   /* full: dropped */
+        events[head % EVENT_QUEUE_SIZE] = *ev;
+        __atomic_store_n(&ev_head, head + 1, __ATOMIC_RELEASE);
     }
-    events[head % EVENT_QUEUE_SIZE] = *ev;
-    __atomic_store_n(&ev_head, head + 1, __ATOMIC_RELEASE);
+    UNLOCK();
 }
 
 void st_ikbd_key(uint8_t scancode, bool pressed)

@@ -394,6 +394,10 @@ static void hid_key(uint8_t usage, bool pressed)
     }
 }
 
+/* A Bluetooth mouse, and the touch screen as a touchpad (the runtime's:
+ * its moves come in the ST's pixels, and GEM moves the pointer a pixel a
+ * count in every resolution)
+ */
 static void hid_mouse(int dx, int dy, uint8_t buttons)
 {
     st_ikbd_mouse(dx, dy, buttons & 0x01, buttons & 0x02);
@@ -628,6 +632,7 @@ static const emu_machine_t machine = {
     .audio_pending = st_audio_pending,
     .hid_key = hid_key,
     .hid_mouse = hid_mouse,
+    .touchpad = hid_mouse,
     .choices = choices,
     .choice_count = sizeof(choices) / sizeof(choices[0]),
     .disks = &disks,

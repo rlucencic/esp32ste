@@ -2,7 +2,7 @@
 
 <p align="center">
   <b>An Atari STE on a 7-inch ESP32-S3 touch-screen board or an M5Stack Tab5.</b><br>
-  68000 at 8 MHz (on the Tab5 also 16 MHz or as fast as it goes), TOS 1.62 / 2.06, up to 4 MB, floppies, hard disk, Bluetooth keyboard and mouse.
+  68000 at 8 MHz (on the Tab5 also 16 MHz or as fast as it goes), TOS 1.62 / 2.06, up to 4 MB, floppies, hard disk, Bluetooth keyboard and mouse, the touch screen as a touchpad.
 </p>
 
 <p align="center">
@@ -32,7 +32,8 @@
 
 esp32ste turns the Makerfabs MaTouch ESP32-S3 Parallel TFT with Touch 7", or an
 M5Stack Tab5, into an Atari STE. The ST picture fills the screen's height, a Bluetooth
-keyboard and mouse stand in for the ST's own, the microSD card is hard disk
+keyboard and mouse stand in for the ST's own (the touch screen can be a
+touchpad for the mouse), the microSD card is hard disk
 C:, and floppy disk images go in drives A: and B:. A setup screen on the
 touch panel, and a web page on your network, handle everything else.
 
@@ -83,6 +84,10 @@ all are built on the shared runtime
   CPU speed (Tab5), floppy disks, reset
 - **Bluetooth keyboard and mouse** (BLE HID), with battery levels; on the
   Tab5 also M5Stack's Tab5 Keyboard
+- **The touch screen as a touchpad**, on both boards, for when there's no
+  mouse at hand (a Bluetooth mouse is the better way): drag a finger
+  anywhere to move the pointer, tap to click where it points, tap and
+  touch again to drag, hold still half a second for the right button
 - **Web page** at `http://atari-ste.local`: drop `.ST`, `.MSA` or `.ZIP` files
   onto it (with a progress bar) to put them on the SD card, and watch the
   machine, drives, board and Bluetooth devices live
@@ -102,7 +107,7 @@ all are built on the shared runtime
 | Chip | ESP32-S3-WROOM-1-N16R8: 16 MB flash, 8 MB octal PSRAM | ESP32-P4 (RISC-V, 360 MHz): 16 MB flash, 32 MB PSRAM; an ESP32-C6 for WiFi and Bluetooth |
 | Screen | 7" 1024×600 RGB, GT911 capacitive touch | 5" 1280×720 MIPI-DSI, capacitive touch, held landscape |
 | Storage | microSD card (FAT32 or exFAT) | microSD card (FAT32 or exFAT) |
-| Input | any BLE keyboard and mouse | any BLE keyboard and mouse, or the Tab5 Keyboard |
+| Input | any BLE keyboard and mouse; the touch screen as a touchpad | any BLE keyboard and mouse, or the Tab5 Keyboard; the touch screen as a touchpad |
 | Sound | a speaker on the MAX98357A output (optional, `menuconfig`) | the built-in speaker (ES8388) |
 
 On the MaTouch the ST picture is 960×600, on the Tab5 1152×720 (high
@@ -159,6 +164,7 @@ own flash; WiFi networks are remembered by its ESP32-C6.
 | To | Do |
 |---|---|
 | Get back to the setup screen | Hold the top-right corner of the screen for 2 s |
+| Use the mouse without one | The touch screen is a touchpad: drag a finger anywhere to move the pointer, tap to click, tap and touch again to drag, hold still for half a second for the right button |
 | Change TOS or RAM | On the setup screen; **Restart** applies it |
 | Change the CPU speed (Tab5) | On the setup screen, at once: 8 MHz for exact STE timing (games, demos), 16 MHz or Fastest for GEM and applications |
 | Insert a floppy | Setup screen → **Floppy** → **Insert disk**, or **Insert into…** on the web page |
@@ -207,7 +213,7 @@ flowchart LR
     PRES[Presenter<br>ST screen → 960×600 / 1152×720]
     UI[Setup screen<br>LVGL]
     NET[WiFi · web page · mDNS]
-    BLE[Bluetooth HID]
+    BLE[Bluetooth HID · touchpad]
   end
   PSRAM[(PSRAM<br>ST RAM · framebuffer)]
   SD[(microSD<br>C: · floppies/)]
