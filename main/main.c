@@ -107,6 +107,83 @@ bool st_host_disk_free(const char *path, uint64_t *total, uint64_t *free_bytes)
     return sdcard_space(total, free_bytes);
 }
 
+/* ---- Free space, for the web page ----
+ *
+ * A floppy's FAT is counted where its image is safe to read: at insert (the
+ * emulation is paused then) and on the emulation task a second after the
+ * drive's last write (each one goes straight through to the card). C: is
+ * the SD card's, asked in every_second().
+ */
+typedef struct {
+    volatile bool known;
+    volatile uint64_t free, size;
+    uint32_t writes;                /* the drive's write count when counted */
+    bool waiting;                   /* written since: once the writes stop */
+} space_t;
+
+static space_t s_space[3];          /* A:, B:, C: */
+
+static void space_set(int d, bool known, uint64_t free_bytes, uint64_t size)
+{
+    s_space[d].known = false;
+    s_space[d].free = free_bytes;
+    s_space[d].size = size;
+    s_space[d].known = known;
+}
+
+/* The figures for the web page: the size, 0 if not known */
+static uint64_t space_get(int d, uint64_t *free_bytes)
+{
+    *free_bytes = s_space[d].free;
+    uint64_t size = s_space[d].size;
+    return s_space[d].known ? size : 0;
+}
+
+static void floppy_count(int d)
+{
+    st_floppy_status_t fs;
+    st_floppy_status(&fs);
+    s_space[d].writes = fs.writes[d];
+    s_space[d].waiting = false;
+    uint64_t f = 0, size = 0;
+    bool known = st_floppy_space(d, &f, &size);
+    space_set(d, known, f, size);
+}
+
+/* On the emulation task, between frames */
+static void floppy_space_check(void)
+{
+    static int64_t last;
+    int64_t now = esp_timer_get_time();
+    if (now - last < 1000000) {
+        return;
+    }
+    last = now;
+    st_floppy_status_t fs;
+    st_floppy_status(&fs);
+    for (int d = 0; d < 2; d++) {
+        if (fs.writes[d] != s_space[d].writes) {
+            s_space[d].writes = fs.writes[d];
+            s_space[d].waiting = true;      /* (the next second, if it stays so) */
+        } else if (s_space[d].waiting) {
+            floppy_count(d);
+        }
+    }
+}
+
+static bool floppy_insert(int drive, const char *path)
+{
+    bool ok = st_floppy_insert(drive, path);
+    floppy_count(drive);
+    return ok;
+}
+
+static void floppy_eject(int drive)
+{
+    st_floppy_eject(drive);
+    space_set(drive, false, 0, 0);
+}
+
 /* GEM (re)started in a resolution: remembered for the next boot. Called
  * from the emulation task; the NVS write happens in every_second().
  */
@@ -123,6 +200,10 @@ static void every_second(void)
     if (rez >= 0 && rez != settings.resolution) {
         settings.resolution = rez;
         settings_save();
+    }
+    uint64_t total, free_bytes;
+    if (s_cfg.hd_path != NULL && sdcard_space(&total, &free_bytes)) {
+        space_set(2, true, free_bytes, total);
     }
 }
 
@@ -143,6 +224,7 @@ static void every_second(void)
  */
 static void run_frame(void)
 {
+    floppy_space_check();
     uint8_t cpu = settings.cpu;
     if (cpu != SETTINGS_CPU_FASTEST) {
         st_set_cpu_speed(cpu == SETTINGS_CPU_16MHZ ? 2 * ST_CPU_SPEED_8MHZ : ST_CPU_SPEED_8MHZ);
@@ -406,8 +488,8 @@ static const disks_config_t disks = {
     .sizes = sizes,
     .size_count = 1,
     .max_upload = 4 * 1024 * 1024,
-    .insert = st_floppy_insert,
-    .eject = st_floppy_eject,
+    .insert = floppy_insert,
+    .eject = floppy_eject,
     .path = st_floppy_path,
     .write_protected = st_floppy_write_protected,
     .create = floppy_create,
@@ -454,8 +536,9 @@ static void status(emu_json_t *j, int section)
     for (int d = 0; d < 2; d++) {
         const char *name = disks_name(d);
         snprintf(text, sizeof(text), "track %d", fs.track[d]);
-        emu_json_drive(j, drive_names[d], name, st_floppy_write_protected(d), fs.light == d,
-                       fs.reads[d], fs.writes[d], name ? text : NULL);
+        uint64_t free_bytes, size = space_get(d, &free_bytes);
+        emu_json_drive_space(j, drive_names[d], name, st_floppy_write_protected(d), fs.light == d,
+                             fs.reads[d], fs.writes[d], name ? text : NULL, free_bytes, size);
     }
     if (s_cfg.hd_path != NULL) {
         char last[100];
@@ -463,7 +546,9 @@ static void status(emu_json_t *j, int section)
         if (verb) {
             snprintf(text, sizeof(text), "last %s: %s", verb, last);
         }
-        emu_json_drive(j, "C:", "SD card", false, false, 0, 0, verb ? text : "no files used yet");
+        uint64_t free_bytes, size = space_get(2, &free_bytes);
+        emu_json_drive_space(j, "C:", "SD card", false, false, 0, 0, verb ? text : "no files used yet",
+                             free_bytes, size);
     }
 }
 

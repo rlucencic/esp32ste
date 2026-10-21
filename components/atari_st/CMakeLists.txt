@@ -14,7 +14,8 @@ idf_component_register(SRCS "st.c"
                             "blitter.c"
                        INCLUDE_DIRS "include"
                        PRIV_INCLUDE_DIRS "."
-                       REQUIRES musashi)
+                       REQUIRES musashi
+                       PRIV_REQUIRES diskspace)
 
 # Runs together with the CPU core in the emulation loop
 target_compile_options(${COMPONENT_LIB} PRIVATE -O2)

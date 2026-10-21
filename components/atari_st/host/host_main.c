@@ -457,6 +457,13 @@ int main(int argc, char **argv)
         printf("free ST RAM: %lu bytes, largest block %lu\n",
                (unsigned long)ram_free, (unsigned long)ram_largest);
     }
+    for (int d = 0; d < 2; d++) {
+        uint64_t free_bytes, size;
+        if (st_floppy_space(d, &free_bytes, &size)) {
+            printf("%c: %llu bytes free of %llu\n", 'A' + d, (unsigned long long)free_bytes,
+                   (unsigned long long)size);
+        }
+    }
     double secs = (double)(clock() - start) / CLOCKS_PER_SEC;
     printf("%d frames in %.2f s host time\n", frames, secs);
 

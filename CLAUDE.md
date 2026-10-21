@@ -297,6 +297,11 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
   (the panel itself, touch feel, audio) need them to check.
 - Speed: on the MaTouch about 83-85% of a real STE on the TOS 2.06 desktop
   in high resolution, 77-81% with TOS 1.62; on the Tab5 100%.
+- **Free disk space** (web page, under each drive): A: and B: from the
+  floppy's FAT (`st_floppy_space()`, esp32emu's `diskspace`), counted at
+  insert and on the emulation task a second after the drive's last write;
+  C: the SD card's. Host: a blank disk 728064 free, TOS's DESKTOP.INF took
+  one cluster; Tab5 (2026-10-21): a GEMBench disk 578560 of 728064.
 
 ## Open items
 

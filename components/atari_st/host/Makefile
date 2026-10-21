@@ -2,9 +2,10 @@
 ROOT      := ../../..
 MUSASHI   := ../../../../esp32emu/components/musashi
 EMUDBG    := ../../../../esp32emu/components/emudbg
+DISKSPACE := ../../../../esp32emu/components/diskspace
 ST        := ..
 BUILD     := build
-CFLAGS    := -O2 -g -Wall -DM68K_INSTRUCTION_HOOK=2 -I$(ST)/include -I$(ST) -I$(MUSASHI) -I$(MUSASHI)/musashi -I$(MUSASHI)/generated -I$(EMUDBG)/include
+CFLAGS    := -O2 -g -Wall -DM68K_INSTRUCTION_HOOK=2 -I$(ST)/include -I$(ST) -I$(MUSASHI) -I$(MUSASHI)/musashi -I$(MUSASHI)/generated -I$(EMUDBG)/include -I$(DISKSPACE)/include
 TOS       ?= $(ROOT)/roms/tos162.img
 FRAMES    ?= 600
 RAM_KB    ?= 1024
@@ -17,12 +18,13 @@ M68K_SRCS := $(MUSASHI)/musashi/m68kcpu.c $(MUSASHI)/musashi/m68kdasm.c \
 ST_OBJS   := $(patsubst $(ST)/%.c,$(BUILD)/st/%.o,$(ST_SRCS))
 M68K_OBJS := $(patsubst $(MUSASHI)/%.c,$(BUILD)/m68k/%.o,$(M68K_SRCS)) \
              $(BUILD)/emudbg.o $(BUILD)/emudbg_posix.o
+DS_OBJS   := $(BUILD)/diskspace_fat.o
 
 run: $(BUILD)/st_host
 	./$(BUILD)/st_host $(TOS) $(FRAMES) $(BUILD)/screen.ppm $(RAM_KB) $(MONITOR)
 	sips -s format png $(BUILD)/screen.ppm --out $(BUILD)/screen.png >/dev/null
 
-$(BUILD)/st_host: host_main.c $(ST_OBJS) $(M68K_OBJS)
+$(BUILD)/st_host: host_main.c $(ST_OBJS) $(M68K_OBJS) $(DS_OBJS)
 	$(CC) $(CFLAGS) $^ -lm -lpthread -o $@
 
 $(BUILD)/st/%.o: $(ST)/%.c $(wildcard $(ST)/*.h $(ST)/include/*.h)
@@ -34,6 +36,10 @@ $(BUILD)/m68k/%.o: $(MUSASHI)/%.c $(MUSASHI)/m68kconf.h $(EMUDBG)/include/emudbg
 	$(CC) $(CFLAGS) -w -c $< -o $@
 
 $(BUILD)/%.o: $(EMUDBG)/%.c $(EMUDBG)/include/emudbg.h
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/diskspace_fat.o: $(DISKSPACE)/fat.c $(DISKSPACE)/include/diskspace.h
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 

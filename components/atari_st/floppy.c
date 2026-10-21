@@ -15,6 +15,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include "diskspace.h"
 #include "st_internal.h"
 
 #define SECTOR          512
@@ -332,6 +333,39 @@ bool floppy_write_sector(int drive, int track, int side, int sector, const uint8
     fflush(d->file);
     fsync(fileno(d->file));
     return ok;
+}
+
+/* ---- free space --------------------------------------------------------- */
+
+static bool image_read(void *ctx, uint64_t offset, void *buf, uint32_t len)
+{
+    const disk_t *d = ctx;
+    uint64_t size = (uint64_t)d->tracks * d->sides * d->spt * SECTOR;
+    if (offset > size || len > size - offset) {
+        return false;
+    }
+    if (d->data) {
+        memcpy(buf, d->data + offset, len);
+        return true;
+    }
+    return fseek(d->file, (long)offset, SEEK_SET) == 0 && fread(buf, 1, len, d->file) == len;
+}
+
+/* The disk's FAT counted now (the floppy code seeks before each sector) */
+bool st_floppy_space(int drive, uint64_t *free_bytes, uint64_t *size)
+{
+    if (drive < 0 || drive > 1 || !floppy_present(drive)) {
+        return false;
+    }
+    disk_t *d = &disks[drive];
+    diskspace_disk_t disk = { image_read, d, (uint64_t)d->tracks * d->sides * d->spt * SECTOR };
+    diskspace_t s;
+    if (!diskspace_fat(&disk, 0, &s)) {
+        return false;
+    }
+    *free_bytes = s.free;
+    *size = s.size;
+    return true;
 }
 
 /* ---- blank disks -------------------------------------------------------- */

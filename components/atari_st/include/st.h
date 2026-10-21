@@ -164,6 +164,12 @@ void st_floppy_unpacked_path(const char *path, char *out, size_t len);
 /* Write a blank formatted 720 KB .ST image (80 tracks, 9 sectors, 2 sides) */
 bool st_floppy_create(const char *path);
 
+/* The disk's free space and size in bytes as its FAT counts them (the data
+ * area), read from the image now: not while st_run_frame() runs on another
+ * task. False when empty or not a FAT disk.
+ */
+bool st_floppy_space(int drive, uint64_t *free_bytes, uint64_t *size);
+
 /* Drive activity, safe to read from another task (values may be a frame old) */
 typedef struct {
     int light;              /* drive whose light is on (selected, motor running), -1 none */
