@@ -125,7 +125,8 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
   esp32emu's touchpad (`.touchpad = hid_mouse`: a count a pixel, as GEM
   moves the pointer in every resolution), status rows and console
   commands; `every_second()` saves the desktop resolution.
-- **Setup screen** (shared, LVGL 9.4): status (TOS, RAM, CPU, WiFi, time),
+- **Setup screen** (shared, LVGL 9.4): status (TOS, RAM, CPU, Sound on the
+  Tab5: mute and volume, WiFi, time),
   networks, password, Bluetooth, pairing, floppy, disk images. While the ST
   runs it's opened by the corner long-press, the emulator pauses, and
   changing TOS/RAM restarts the ST ("Restart"), the CPU speed (Tab5)
@@ -186,6 +187,8 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
 - NVS `blehid`: `known` (paired devices); NimBLE keeps bonds itself. Shared
   with the Mac firmware (same NVS partition): pairings and WiFi survive
   switching between them.
+- NVS `speaker`: `volume`, `muted` (esp32emu's Sound row on the setup
+  screen, the console's `v`), the same for every emulator on the board.
 - WiFi credentials: ESP-IDF's own NVS storage.
 - SD card: C: is the whole card (`CONFIG_ST_HD_FOLDER`), disk images in
   `floppies/` (made if missing), `EMPTY0001.ST` ... for new blank disks.
