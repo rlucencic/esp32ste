@@ -122,3 +122,9 @@ index 31c4f39..f2218fe 100644
          }
          out[i] = sum / ticks;
 ```
+
+## Subsequent four-plane test
+
+The next experiment uses a full-screen guest animation and tests a four-pixel
+lookup decoder. See [the planar conversion report](planar-conversion-experiment-2026-11-06.md)
+for measurements, correctness checks and the tradeoff in other display modes.

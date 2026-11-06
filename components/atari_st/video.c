@@ -194,6 +194,34 @@ static void render_line(int y, uint16_t *out, const uint16_t colors[16], const s
     int planes = mode->planes;
     uint32_t addr = vid.frame_base + y * line_stride;
 
+    if (planes == 4) {
+        /* Four consecutive pixels, one palette index per nibble. */
+        static const uint16_t spread[16] = {
+            0x0000, 0x1000, 0x0100, 0x1100,
+            0x0010, 0x1010, 0x0110, 0x1110,
+            0x0001, 0x1001, 0x0101, 0x1101,
+            0x0011, 0x1011, 0x0111, 0x1111,
+        };
+        for (int x = 0; x < mode->width; x += 16) {
+            uint32_t group = addr + (x / 16) * 8;
+            uint16_t p[4];
+            for (int i = 0; i < 4; i++) {
+                p[i] = screen_word(group + i * 2);
+            }
+            for (int shift = 12; shift >= 0; shift -= 4) {
+                unsigned indexes = spread[(p[0] >> shift) & 15] |
+                                   (spread[(p[1] >> shift) & 15] << 1) |
+                                   (spread[(p[2] >> shift) & 15] << 2) |
+                                   (spread[(p[3] >> shift) & 15] << 3);
+                *out++ = colors[indexes & 15];
+                *out++ = colors[(indexes >> 4) & 15];
+                *out++ = colors[(indexes >> 8) & 15];
+                *out++ = colors[indexes >> 12];
+            }
+        }
+        return;
+    }
+
     for (int x = 0; x < mode->width; x += 16) {
         uint32_t group = addr + (x / 16) * planes * 2;
         uint16_t p[4] = { 0 };
