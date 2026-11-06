@@ -188,6 +188,14 @@ static void current_colors(uint16_t colors[16], int planes)
     }
 }
 
+/* Four consecutive pixels, one palette index per nibble. */
+static const uint16_t spread[16] = {
+    0x0000, 0x1000, 0x0100, 0x1100,
+    0x0010, 0x1010, 0x0110, 0x1110,
+    0x0001, 0x1001, 0x0101, 0x1101,
+    0x0011, 0x1011, 0x0111, 0x1111,
+};
+
 static void render_line(int y, uint16_t *out, const uint16_t colors[16], const st_screen_mode_t *mode)
 {
     int line_stride = bytes_per_line(vid.frame_mode) + vid.frame_line_offset * 2;
@@ -195,13 +203,6 @@ static void render_line(int y, uint16_t *out, const uint16_t colors[16], const s
     uint32_t addr = vid.frame_base + y * line_stride;
 
     if (planes == 4) {
-        /* Four consecutive pixels, one palette index per nibble. */
-        static const uint16_t spread[16] = {
-            0x0000, 0x1000, 0x0100, 0x1100,
-            0x0010, 0x1010, 0x0110, 0x1110,
-            0x0001, 0x1001, 0x0101, 0x1101,
-            0x0011, 0x1011, 0x0111, 0x1111,
-        };
         for (int x = 0; x < mode->width; x += 16) {
             uint32_t group = addr + (x / 16) * 8;
             uint16_t p[4];
@@ -222,16 +223,27 @@ static void render_line(int y, uint16_t *out, const uint16_t colors[16], const s
         return;
     }
 
-    for (int x = 0; x < mode->width; x += 16) {
-        uint32_t group = addr + (x / 16) * planes * 2;
-        uint16_t p[4] = { 0 };
-        for (int i = 0; i < planes; i++) {
-            p[i] = screen_word(group + i * 2);
+    if (planes == 2) {
+        for (int x = 0; x < mode->width; x += 16) {
+            uint32_t group = addr + (x / 16) * 4;
+            uint16_t p0 = screen_word(group);
+            uint16_t p1 = screen_word(group + 2);
+            for (int shift = 12; shift >= 0; shift -= 4) {
+                unsigned indexes = spread[(p0 >> shift) & 15] |
+                                   (spread[(p1 >> shift) & 15] << 1);
+                *out++ = colors[indexes & 15];
+                *out++ = colors[(indexes >> 4) & 15];
+                *out++ = colors[(indexes >> 8) & 15];
+                *out++ = colors[indexes >> 12];
+            }
         }
+        return;
+    }
+
+    for (int x = 0; x < mode->width; x += 16) {
+        uint16_t word = screen_word(addr + (x / 16) * 2);
         for (int bit = 15; bit >= 0; bit--) {
-            int index = ((p[0] >> bit) & 1) | (((p[1] >> bit) & 1) << 1) |
-                        (((p[2] >> bit) & 1) << 2) | (((p[3] >> bit) & 1) << 3);
-            *out++ = colors[index];
+            *out++ = colors[(word >> bit) & 1];
         }
     }
 }

@@ -124,3 +124,11 @@ claiming broader STE gains. A separate bounded test can examine the
 remaining one-/two-plane loop or frame copying; changes to the shared
 presenter need cross-emulator validation. The next machine-level targets
 remain mac2/mac3 color conversion and MSX2 bitmap/sprite workloads.
+
+## One-/two-plane follow-up
+
+The subsequent [medium/monochrome experiment](one-two-plane-experiment-2026-11-06.md)
+specializes the remaining generic paths. It supersedes the small one-/two-
+plane regression above: versus this retained four-plane build, their P4
+isolated rendering costs fall 53.840% and 54.937%. Four-plane cost stays
+effectively unchanged. See that report for full-firmware profiles and checks.
