@@ -132,7 +132,7 @@ speed choice too.
 
 ### 1. What you need
 
-- [ESP-IDF](https://github.com/espressif/esp-idf) v5.5 (developed with v5.5.4)
+- [ESP-IDF](https://github.com/espressif/esp-idf) v5.5 (developed with v5.5.6)
 - TOS ROM images, which are copyrighted and **not included**: dumps of your
   own STE's TOS 1.62 and/or TOS 2.06 (256 KB each). Put them in `roms/` as
   `tos162.img` and `tos206.img`.

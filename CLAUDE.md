@@ -6,7 +6,7 @@ esp32s3, the default) and the M5Stack Tab5 (ESP32-P4, 1280x720, target
 esp32p4, see "M5Stack Tab5" below). Bluetooth keyboard and mouse, the SD
 card as hard disk C:, floppy disk images in drives A: and B:, ACSI hard
 disk images on devices 0 and 1, an LVGL setup
-screen, and a web page for disk images and live status. ESP-IDF v5.5.4, C.
+screen, and a web page for disk images and live status. ESP-IDF v5.5.6, C.
 
 The board side (tasks, LCD, touch, SD, WiFi, BLE, setup screen, web page,
 console) and the 68000 core are the shared library in `../esp32emu`, also
@@ -35,7 +35,7 @@ configured with, so always build like this:
 
 ```sh
 bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
-  export IDF_PYTHON_ENV_PATH=/Users/robertlucencic/.espressif/tools/python/v5.5.4/venv; \
+  export IDF_PYTHON_ENV_PATH=/Users/robertlucencic/.espressif/tools/python/v5.5.6/venv; \
   export PATH=$IDF_PYTHON_ENV_PATH/bin:$PATH; \
   idf.py build && idf.py -p /dev/cu.usbmodem1101 app-flash'
 ```
@@ -57,9 +57,9 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
   console is on native USB): the user taps Start, or a test build has
   `CONFIG_EMU_AUTOSTART`. The web API reads the board without a reset.
 - **ESP-IDF 6.1.1** (details, measurements and the decision to stay on
-  5.5.4 for now in `../esp32emu/CLAUDE.md`, "ESP-IDF 6.1"; the boards run
-  5.5.4 builds): its own build folders, sdkconfig and lock files beside
-  the 5.5.4 ones:
+  5.5 for now in `../esp32emu/CLAUDE.md`, "ESP-IDF 6.1"; the boards run
+  5.5.6 builds): its own build folders, sdkconfig and lock files beside
+  the 5.5 ones:
   ```sh
   bash -c '. ~/.espressif/tools/activate_idf_v6.1.1.sh >/dev/null 2>&1; \
     unset IDF_COMPONENT_LOCAL_STORAGE_URL; \
@@ -100,7 +100,7 @@ beside the MaTouch build, on `/dev/cu.usbmodem3101`:
 
 ```sh
 bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
-  export IDF_PYTHON_ENV_PATH=/Users/robertlucencic/.espressif/tools/python/v5.5.4/venv; \
+  export IDF_PYTHON_ENV_PATH=/Users/robertlucencic/.espressif/tools/python/v5.5.6/venv; \
   export PATH=$IDF_PYTHON_ENV_PATH/bin:$PATH; \
   idf.py -B build-tab5 -DIDF_TARGET=esp32p4 -DSDKCONFIG=$PWD/build-tab5/sdkconfig build && \
   idf.py -B build-tab5 -DIDF_TARGET=esp32p4 -DSDKCONFIG=$PWD/build-tab5/sdkconfig -p /dev/cu.usbmodem3101 flash'
