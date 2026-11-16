@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_heap_caps.h"
@@ -84,7 +85,9 @@ static void reserve_memory(void)
 #endif
 }
 
-/* The SD card is drive C: (all of it, or a folder) */
+/* The SD card is drive C: (all of it, or a folder), or the drive after a
+ * hard disk image's partitions when one boots
+ */
 static void storage(bool sd)
 {
     const char *hd = NULL;
@@ -97,8 +100,8 @@ static void storage(bool sd)
     }
 #endif
     s_cfg.hd_path = hd;
-    emu_set_drive_info(hd ? "Hard disk C: on the SD card" :
-                       sd ? "SD card: floppy disks only" : "No SD card: no hard disk or floppy disks");
+    emu_set_drive_info(hd ? "Hard disk C: on the SD card (D: or later if an ACSI image boots)" :
+                       sd ? "SD card: disk images only" : "No SD card: no hard disk or disk images");
 }
 
 /* For the ST's Dfree() on drive C: */
@@ -459,11 +462,60 @@ static const emu_choice_t choices[] = {
 #endif
 };
 
-/* ---- Floppy disks ---- */
+/* ---- Disks: floppies in A: and B:, hard disk images on ACSI 0 and 1 ---- */
 
-static const char *const extensions[] = { ".st", ".msa", NULL };
-static const char *const drive_names[] = { "A:", "B:" };
+#define FLOPPIES        2
+#define DRIVES          (FLOPPIES + ST_ACSI_DEVICES)
+
+static const char *const extensions[] = { ".st", ".msa", ".img", ".hd", NULL };
+static const char *const drive_names[DRIVES] = { "A:", "B:", "ACSI 0", "ACSI 1" };
 static const disks_size_t sizes[] = { { 737280, "720 KB" } };
+
+static bool hard_disk_name(const char *name)
+{
+    size_t n = strlen(name);
+    return (n > 4 && !strcasecmp(name + n - 4, ".img")) || (n > 3 && !strcasecmp(name + n - 3, ".hd"));
+}
+
+static bool disk_accepts(int drive, const char *name)
+{
+    return (drive >= FLOPPIES) == hard_disk_name(name);
+}
+
+/* Blank disks are floppies (an empty hard disk needs partitioning and a
+ * driver first)
+ */
+static bool disk_takes_blank(int drive)
+{
+    return drive < FLOPPIES;
+}
+
+static bool disk_insert(int drive, const char *path)
+{
+    if (drive >= FLOPPIES) {
+        return st_acsi_insert(drive - FLOPPIES, path);
+    }
+    return floppy_insert(drive, path);
+}
+
+static void disk_eject(int drive)
+{
+    if (drive >= FLOPPIES) {
+        st_acsi_eject(drive - FLOPPIES);
+    } else {
+        floppy_eject(drive);
+    }
+}
+
+static const char *disk_path(int drive)
+{
+    return drive >= FLOPPIES ? st_acsi_path(drive - FLOPPIES) : st_floppy_path(drive);
+}
+
+static bool disk_write_protected(int drive)
+{
+    return drive >= FLOPPIES ? st_acsi_write_protected(drive - FLOPPIES) : st_floppy_write_protected(drive);
+}
 
 static bool floppy_create(const char *path, uint32_t bytes)
 {
@@ -481,23 +533,25 @@ static void floppy_removed(const char *path)
 static const disks_config_t disks = {
     .folder = CONFIG_ST_FLOPPY_FOLDER,
     .extensions = extensions,
-    .description = "Disk images (.ST, .MSA)",
-    .title = "Floppy disks",
-    .button = "Floppy",
+    .description = "Disk images (.ST, .MSA; .IMG, .HD hard disks)",
+    .title = "Disks",
+    .button = "Disks",
     .nvs_namespace = "floppy",
-    .drives = 2,
+    .drives = DRIVES,
     .drive_names = drive_names,
     .new_prefix = "EMPTY",
     .new_extension = ".ST",
     .sizes = sizes,
     .size_count = 1,
-    .max_upload = 4 * 1024 * 1024,
-    .insert = floppy_insert,
-    .eject = floppy_eject,
-    .path = st_floppy_path,
-    .write_protected = st_floppy_write_protected,
+    .max_upload = 256 * 1024 * 1024,
+    .insert = disk_insert,
+    .eject = disk_eject,
+    .path = disk_path,
+    .write_protected = disk_write_protected,
     .create = floppy_create,
     .removed = floppy_removed,
+    .accepts = disk_accepts,
+    .takes_blank = disk_takes_blank,
 };
 
 /* ---- Status ---- */
@@ -537,21 +591,34 @@ static void status(emu_json_t *j, int section)
     }
     st_floppy_status_t fs;
     st_floppy_status(&fs);
-    for (int d = 0; d < 2; d++) {
+    for (int d = 0; d < FLOPPIES; d++) {
         const char *name = disks_name(d);
         snprintf(text, sizeof(text), "track %d", fs.track[d]);
         uint64_t free_bytes, size = space_get(d, &free_bytes);
         emu_json_drive_space(j, drive_names[d], name, st_floppy_write_protected(d), fs.light == d,
                              fs.reads[d], fs.writes[d], name ? text : NULL, free_bytes, size);
     }
+    st_acsi_status_t as;
+    st_acsi_status(&as);
+    for (int i = 0; i < ST_ACSI_DEVICES; i++) {
+        const char *name = disks_name(FLOPPIES + i);
+        if (name == NULL) {
+            continue;
+        }
+        uint64_t bytes = st_acsi_size(i);
+        snprintf(text, sizeof(text), "%llu %s hard disk", (unsigned long long)(bytes >> (bytes >= 1 << 20 ? 20 : 10)),
+                 bytes >= 1 << 20 ? "MB" : "KB");
+        emu_json_drive_space(j, drive_names[FLOPPIES + i], name, st_acsi_write_protected(i), as.light == i,
+                             as.reads[i], as.writes[i], text, 0, 0);
+    }
     if (s_cfg.hd_path != NULL) {
-        char last[100];
+        char last[100], letter[3] = { st_hd_drive(), ':', 0 };
         const char *verb = st_hd_last_file(last, sizeof(last));
         if (verb) {
             snprintf(text, sizeof(text), "last %s: %s", verb, last);
         }
         uint64_t free_bytes, size = space_get(2, &free_bytes);
-        emu_json_drive_space(j, "C:", "SD card", false, false, 0, 0, verb ? text : "no files used yet",
+        emu_json_drive_space(j, letter, "SD card", false, false, 0, 0, verb ? text : "no files used yet",
                              free_bytes, size);
     }
 }

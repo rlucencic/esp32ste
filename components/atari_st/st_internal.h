@@ -56,6 +56,8 @@ typedef struct {
     uint32_t rom_size;
     uint8_t *cart;                  /* cartridge at $FA0000, same word order */
     uint32_t cart_size;
+    uint16_t tos_version;           /* $0162, $0206 */
+    bool hd_folder;                 /* a host folder as a GEMDOS drive */
     uint8_t mmu_config;             /* $FF8001 */
     st_monitor_t monitor;
     st_monitor_t boot_monitor;
@@ -109,7 +111,7 @@ void st_poke32(uint32_t address, uint32_t value);
 void st_ram_write(uint32_t address, const uint8_t *src, uint32_t len);
 void st_ram_read(uint32_t address, uint8_t *dst, uint32_t len);
 
-/* gemdos.c: SD card / host folder as drive C: */
+/* gemdos.c: SD card / host folder as drive C: (or after the hard disk's) */
 void gemdos_init(const char *root, bool boot);
 void gemdos_reset(void);
 int m68k_host_illegal(int opcode);
@@ -121,8 +123,11 @@ void st_desktop_resolution(int rez);
 void st_set_monitor(st_monitor_t monitor);
 void st_update_gpip7(void);
 
-/* tos_patch.c */
-void tos_patch_apply(uint16_t version, bool any_resolution, bool gemdos_drive);
+/* tos_patch.c: at st_init(); the hard disk scan's and wait's at each reset
+ * (images come and go)
+ */
+void tos_patch_apply(uint16_t version, bool any_resolution);
+void tos_patch_hd(uint16_t version, bool no_scan, bool no_wait);
 
 /* io.c: $FF8000-$FFFFFF, byte accesses (words are split high byte first) */
 uint8_t st_io_read8(uint32_t address);
@@ -146,12 +151,24 @@ void video_start_frame(void);
 uint8_t video_read(uint32_t address);
 void video_write(uint32_t address, uint8_t value);
 
-/* fdc.c */
+/* fdc.c: the DMA chip and the floppy controller */
 void fdc_reset(void);
 uint8_t fdc_read(uint32_t address);
 void fdc_write(uint32_t address, uint8_t value);
 void fdc_advance(int cpu_cycles);
 void fdc_disk_changed(int drive);
+/* The DMA, for the ACSI bus too: false once its sector count has run out */
+bool fdc_dma_to_ram(const uint8_t *src, int len);
+bool fdc_dma_from_ram(uint8_t *dst, int len);
+void fdc_set_hdc_irq(bool active);      /* the ACSI side of GPIP 5 */
+
+/* acsi.c: hard disk images on the ACSI bus */
+void acsi_reset(void);
+void acsi_command_byte(uint8_t byte, bool first);   /* written with the HDC selected */
+uint8_t acsi_status(void);                          /* read with the HDC selected */
+void acsi_advance(int cpu_cycles);
+bool acsi_present(void);                /* any image attached */
+int acsi_boot_partitions(void);         /* -1: none boots; else partitions its driver mounts */
 
 /* floppy.c: disk images in drives 0 (A:) and 1 (B:) */
 bool floppy_present(int drive);

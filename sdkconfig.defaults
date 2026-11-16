@@ -32,8 +32,15 @@ CONFIG_FREERTOS_HZ=1000
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
 
 # Console on the native USB port (USB-Serial-JTAG): fast screen dumps and
-# line commands, see main/console.h
+# line commands (../esp32emu/components/emu/include/emu/console.h).
+# With CONFIG_EMU_SPEAKER the MAX98357A takes those pins: the console and
+# flashing move to the USB-to-UART port at 921600 baud.
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# Sound through the MAX98357A (setup screen Sound row). Native USB goes
+# away once the speaker starts; use the board's other USB port.
+CONFIG_EMU_SPEAKER=y
+CONFIG_EMU_SPEAKER_VOLUME=60
 
 # The emulator task keeps core 1 busy without idling
 # CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1 is not set

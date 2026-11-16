@@ -1,7 +1,7 @@
 /*
  * Atari STE machine: 68000 (Musashi), memory map, MFP 68901, GLUE/MMU,
- * shifter, WD1772 + DMA with two floppy drives, YM2149, ACIAs, blitter,
- * DMA sound.
+ * shifter, WD1772 + DMA with two floppy drives, ACSI hard disks, YM2149,
+ * ACIAs, blitter, DMA sound.
  *
  * Platform independent: the caller provides all memory and drives the
  * emulation one video frame at a time.
@@ -36,7 +36,8 @@ typedef struct {
     /* Host folder shown to the ST as drive C: (GEMDOS level, no disk image
      * or driver needed), NULL for none. With hd_boot, C: is the boot drive:
      * AUTO folder and DESKTOP.INF come from there, unless a disk is in
-     * drive A: at boot.
+     * drive A: or a hard disk image boots (then the folder is the drive
+     * after its partitions, st_hd_drive()).
      */
     const char *hd_path;
     bool hd_boot;
@@ -180,9 +181,41 @@ typedef struct {
 
 void st_floppy_status(st_floppy_status_t *status);
 
-/* The last file the ST opened, created or started on C:, as "C:\GAMES\X.PRG".
- * Returns "opened", "created", "started", or NULL (path "") for none yet.
- * Safe to call from another task.
+/* ---- ACSI hard disks: devices 0 and 1 on the hard disk port ----
+ *
+ * Raw images of a whole disk, 512-byte sectors (.IMG, .HD, as Hatari's and
+ * the MiSTer's), read and written straight through to the file
+ * (write-protected if it's read-only). With a hard disk driver in an
+ * image's root sector (AHDI, HDDRIVER, ICD, PPDriver) TOS boots from it,
+ * and the driver mounts the partitions from C: on; the host folder's drive
+ * (hd_path) then comes after them. Not while st_run_frame() runs; the bus
+ * has them at once, TOS and its driver look for them at a reset. They stay
+ * in through st_reset() and st_init().
+ */
+#define ST_ACSI_DEVICES     2
+bool st_acsi_insert(int device, const char *path);
+void st_acsi_eject(int device);
+const char *st_acsi_path(int device);      /* NULL when empty */
+bool st_acsi_write_protected(int device);
+uint64_t st_acsi_size(int device);          /* bytes, 0 when empty */
+
+/* Activity, safe to read from another task (values may be a frame old) */
+typedef struct {
+    int light;              /* device that ran a command lately, -1 none */
+    uint32_t reads[ST_ACSI_DEVICES];        /* sectors read and written since power-on */
+    uint32_t writes[ST_ACSI_DEVICES];
+} st_acsi_status_t;
+
+void st_acsi_status(st_acsi_status_t *status);
+
+/* The host folder's drive letter: 'C', or after the partitions of a hard
+ * disk image TOS boots (known once the ST has started)
+ */
+char st_hd_drive(void);
+
+/* The last file the ST opened, created or started on the host folder's
+ * drive, as "C:\GAMES\X.PRG". Returns "opened", "created", "started", or
+ * NULL (path "") for none yet. Safe to call from another task.
  */
 const char *st_hd_last_file(char *path, size_t len);
 

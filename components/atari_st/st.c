@@ -261,7 +261,9 @@ bool st_init(const st_config_t *config)
         *(uint16_t *)(st.rom + i) = (tos[i] << 8) | tos[i + 1];
     }
 
-    tos_patch_apply((tos[2] << 8) | tos[3], st.any_resolution, config->hd_path != NULL);
+    st.tos_version = (tos[2] << 8) | tos[3];
+    st.hd_folder = config->hd_path != NULL;
+    tos_patch_apply(st.tos_version, st.any_resolution);
     audio_init();
     gemdos_init(config->hd_path, config->hd_boot);
 
@@ -334,6 +336,7 @@ void st_reset(void)
     st.halted = false;
     st.mpb = 0;
     memset(&berr, 0, sizeof(berr));
+    tos_patch_hd(st.tos_version, st.hd_folder && !acsi_present(), st.hd_folder || acsi_present());
     gemdos_reset();
     st_io_reset();
     m68k_set_irq(0);

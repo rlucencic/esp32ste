@@ -87,7 +87,7 @@ static const uint8_t aes_rez_new[AES_REZ_LEN] = {
 
 /* ---- Patch sets ----------------------------------------------------------- */
 
-typedef enum { FEATURE_ANY_RESOLUTION, FEATURE_GEMDOS_DRIVE, FEATURE_ALWAYS } feature_t;
+typedef enum { FEATURE_ANY_RESOLUTION, FEATURE_NO_HD_SCAN, FEATURE_NO_HD_WAIT, FEATURE_ALWAYS } feature_t;
 
 typedef struct {
     uint16_t version;
@@ -126,9 +126,12 @@ static const patch_block_t tos206_blocks[] = {
     BLOCK(0x303D6, t206_bra_old, nop),
 };
 
-/* With the GEMDOS drive there is nothing on the ACSI bus worth waiting for:
- * TOS 1.62 skips the DMA boot scan (8 devices with timeouts, ~10 s), TOS
- * 2.06 skips its wait for a hard disk to spin up (80 s after power-on).
+/* With the GEMDOS drive and no hard disk image there is nothing on the ACSI
+ * bus worth looking for: TOS 1.62 skips the DMA boot scan (8 devices with
+ * timeouts, ~10 s). TOS 2.06 waits for hard disks to spin up (until 80 s
+ * after power-on, the memory test and a bar a key skips, asking no drive),
+ * which an image never needs: skipped with either. Applied or undone at
+ * each reset (tos_patch_hd()), as images come and go.
  */
 static const uint8_t t162_dmaboot_old[] = { 0x7E, 0x00, 0x2F, 0x39 };   /* moveq #0,d7 ... */
 static const uint8_t t162_dmaboot_new[] = { 0x4E, 0x75, 0x2F, 0x39 };   /* rts */
@@ -161,9 +164,9 @@ static const tos_patch_t patches[] = {
       tos162_blocks, COUNT(tos162_blocks), 0x0B550, 0x2B24, 0xE0B5E6, 0xE0B5DE },
     { 0x0206, FEATURE_ANY_RESOLUTION, "all resolutions in Set Preferences",
       tos206_blocks, COUNT(tos206_blocks), 0x0705E, 0x290C, 0xE070F4, 0xE070EC },
-    { 0x0162, FEATURE_GEMDOS_DRIVE, "no ACSI boot scan",
+    { 0x0162, FEATURE_NO_HD_SCAN, "no ACSI boot scan",
       tos162_hd_blocks, COUNT(tos162_hd_blocks), 0, 0, 0, 0 },
-    { 0x0206, FEATURE_GEMDOS_DRIVE, "no hard disk spin-up wait",
+    { 0x0206, FEATURE_NO_HD_WAIT, "no hard disk spin-up wait",
       tos206_hd_blocks, COUNT(tos206_hd_blocks), 0, 0, 0, 0 },
     { 0x0206, FEATURE_ALWAYS, "no ROM CRC check",
       tos206_crc_blocks, COUNT(tos206_crc_blocks), 0, 0, 0, 0 },
@@ -199,12 +202,50 @@ static void block_write(const patch_block_t *b)
     }
 }
 
-void tos_patch_apply(uint16_t version, bool any_resolution, bool gemdos_drive)
+/* The other way: a fixed patch's blocks hold the new bytes, and get back
+ * the old ones
+ */
+static patch_block_t reversed(const patch_block_t *b)
+{
+    patch_block_t r = { b->offset, b->len, b->value, b->expect };
+    return r;
+}
+
+void tos_patch_hd(uint16_t version, bool no_scan, bool no_wait)
+{
+    for (size_t i = 0; i < COUNT(patches); i++) {
+        const tos_patch_t *p = &patches[i];
+        if (p->version != version || (p->feature != FEATURE_NO_HD_SCAN && p->feature != FEATURE_NO_HD_WAIT)) {
+            continue;
+        }
+        bool skip = p->feature == FEATURE_NO_HD_SCAN ? no_scan : no_wait;
+        bool done = true, undone = true;
+        for (int b = 0; b < p->count; b++) {
+            patch_block_t r = reversed(&p->blocks[b]);
+            done &= block_matches(&r);
+            undone &= block_matches(&p->blocks[b]);
+        }
+        if (skip ? done : undone) {
+            continue;                   /* as wanted already */
+        }
+        if (!(skip ? undone : done)) {
+            ST_LOGW("TOS patch skipped, code differs: %s", p->what);
+            continue;
+        }
+        for (int b = 0; b < p->count; b++) {
+            patch_block_t r = reversed(&p->blocks[b]);
+            block_write(skip ? &p->blocks[b] : &r);
+        }
+        ST_LOGI("TOS patch%s: %s", skip ? "" : " undone (a hard disk image)", p->what);
+    }
+}
+
+void tos_patch_apply(uint16_t version, bool any_resolution)
 {
     for (size_t i = 0; i < COUNT(patches); i++) {
         const tos_patch_t *p = &patches[i];
         bool wanted = p->feature == FEATURE_ALWAYS ||
-                      (p->feature == FEATURE_ANY_RESOLUTION ? any_resolution : gemdos_drive);
+                      (p->feature == FEATURE_ANY_RESOLUTION && any_resolution);
         if (p->version != version || !wanted) {
             continue;
         }

@@ -7,7 +7,8 @@
  * DMA a whole sector at a time when the sector is done.
  *
  * A disk change briefly blocks the write-protect sensor, which is how TOS
- * notices it. ACSI (hard disk) accesses get no answer and TOS times out.
+ * notices it. With the HDC selected the bytes go to the ACSI bus (acsi.c),
+ * which shares the DMA and the interrupt line.
  */
 #include <string.h>
 #include "st_internal.h"
@@ -78,13 +79,24 @@ static uint32_t sectors_read[2], sectors_written[2];
 
 static uint8_t buffer[TRACK_BYTES];
 
+/* GPIP 5: the floppy controller's INTRQ and the ACSI bus's IRQ, wired together */
+static bool fdc_irq, hdc_irq;
+
 static void set_intrq(bool active)
 {
-    mfp_set_gpip(MFP_GPIP_FDC, !active);
+    fdc_irq = active;
+    mfp_set_gpip(MFP_GPIP_FDC, !(fdc_irq || hdc_irq));
+}
+
+void fdc_set_hdc_irq(bool active)
+{
+    hdc_irq = active;
+    mfp_set_gpip(MFP_GPIP_FDC, !(fdc_irq || hdc_irq));
 }
 
 void fdc_reset(void)
 {
+    acsi_reset();
     int changing[2] = { fdc.changing[0], fdc.changing[1] };
     memset(&fdc, 0, sizeof(fdc));
     fdc.changing[0] = changing[0];
@@ -115,7 +127,7 @@ static bool write_protected(int drive)
 /* ---- DMA ---------------------------------------------------------------- */
 
 /* The DMA moves data while its sector count is non-zero */
-static bool dma_to_ram(const uint8_t *src, int len)
+bool fdc_dma_to_ram(const uint8_t *src, int len)
 {
     if (fdc.sector_count == 0) {
         return false;
@@ -128,7 +140,7 @@ static bool dma_to_ram(const uint8_t *src, int len)
     return true;
 }
 
-static bool dma_from_ram(uint8_t *dst, int len)
+bool fdc_dma_from_ram(uint8_t *dst, int len)
 {
     if (fdc.sector_count == 0) {
         return false;
@@ -241,7 +253,7 @@ static void read_sector_event(void)
         finish();
         return;
     }
-    if (!dma_to_ram(buffer, SECTOR)) {
+    if (!fdc_dma_to_ram(buffer, SECTOR)) {
         fdc.status |= ST_LOST_DATA;
     }
     sectors_read[fdc.drive]++;
@@ -260,7 +272,7 @@ static void write_sector_event(void)
         finish();
         return;
     }
-    if (!dma_from_ram(buffer, SECTOR)) {
+    if (!fdc_dma_from_ram(buffer, SECTOR)) {
         fdc.status |= ST_LOST_DATA;
         memset(buffer, 0, SECTOR);
     }
@@ -291,7 +303,7 @@ static void read_address_event(void)
     uint16_t crc = id_crc(id);
     id[4] = crc >> 8;
     id[5] = crc;
-    dma_to_ram(id, sizeof(id));
+    fdc_dma_to_ram(id, sizeof(id));
     fdc.sector = id[0];             /* the WD1772 puts the track there */
     finish();
 }
@@ -345,7 +357,7 @@ static void read_track_event(void)
     int len = build_track();
     for (int i = 0; i < len; i += SECTOR) {
         int chunk = len - i < SECTOR ? len - i : SECTOR;
-        if (!dma_to_ram(buffer + i, chunk)) {
+        if (!fdc_dma_to_ram(buffer + i, chunk)) {
             break;
         }
     }
@@ -366,7 +378,7 @@ static void write_track_event(void)
     int len = 0;
     while (len < TRACK_BYTES) {
         int chunk = TRACK_BYTES - len < SECTOR ? TRACK_BYTES - len : SECTOR;
-        if (!dma_from_ram(buffer + len, chunk)) {
+        if (!fdc_dma_from_ram(buffer + len, chunk)) {
             break;
         }
         len += chunk;
@@ -480,6 +492,7 @@ void st_floppy_status(st_floppy_status_t *s)
 
 void fdc_advance(int cycles)
 {
+    acsi_advance(cycles);
     fdc.rotation = (fdc.rotation + cycles) % REVOLUTION;
     for (int d = 0; d < 2; d++) {
         if (fdc.changing[d] > 0) {
@@ -559,7 +572,7 @@ uint8_t fdc_read(uint32_t a)
             return fdc.sector_count;
         }
         if (fdc.mode & MODE_HDC) {
-            return 0xFF;
+            return acsi_status();
         }
         return fdc_register_read();
     case 0xFF8607:
@@ -581,7 +594,9 @@ void fdc_write(uint32_t a, uint8_t v)
     case 0xFF8605:
         if (fdc.mode & MODE_SECTOR_COUNT) {
             fdc.sector_count = v;
-        } else if (!(fdc.mode & MODE_HDC)) {
+        } else if (fdc.mode & MODE_HDC) {
+            acsi_command_byte(v, !(fdc.mode & MODE_A0));    /* A0 low: a command's first byte */
+        } else {
             fdc_register_write(v);
         }
         break;

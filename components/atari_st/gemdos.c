@@ -1,12 +1,13 @@
 /*
- * GEMDOS drive C: backed by a host folder (the SD card on the board).
+ * A GEMDOS drive backed by a host folder (the SD card on the board): C:, or
+ * the letter after the partitions of a hard disk image TOS boots (acsi.c).
  *
  * A small cartridge at $FA0000 runs before TOS boots from disk. It sets
  * TOS's date and time from the host clock (an STE has no RTC and TOS
- * otherwise starts at its build date). With a C: folder it also adds C: to
- * _drvbits, can make it the boot drive, and hooks the GEMDOS trap. Each
+ * otherwise starts at its build date). With a folder it also adds its drive
+ * to _drvbits, can make it the boot drive, and hooks the GEMDOS trap. Each
  * GEMDOS call then traps into the emulator (an illegal opcode inside the
- * cartridge): calls on C: or on our file handles are answered here from the
+ * cartridge): calls on the drive or on our file handles are answered here from the
  * host file system, everything else continues to TOS.
  *
  * Programs on C: are started with TOS's help: Pexec mode 5 creates the
@@ -26,7 +27,8 @@
 #include "m68k.h"
 #include "st_internal.h"
 
-#define HD_DRIVE            2           /* C: */
+#define HD_DRIVE            2           /* C:, unless hard disk partitions come first */
+#define LAST_DRIVE          15          /* P: */
 #define CART_BASE           0xFA0000
 
 /* Cartridge layout (offsets) */
@@ -165,6 +167,7 @@ typedef struct {
 static struct {
     bool enabled;
     bool boot;
+    int drive;                          /* 2 = C: */
     char root[HOST_PATH];
     char cwd[PATH_MAX_ST];              /* current folder on C:, "" = root, "A\B" */
     uint8_t cart[sizeof(cart_code)];
@@ -193,7 +196,7 @@ static void note_file(const char *verb, const char *host)
     last.seq++;
     __sync_synchronize();
     last.verb = verb;
-    int n = snprintf(last.path, sizeof(last.path), "C:%s%s", *rel == '/' ? "" : "\\", rel);
+    int n = snprintf(last.path, sizeof(last.path), "%c:%s%s", 'A' + hd.drive, *rel == '/' ? "" : "\\", rel);
     for (int i = 2; i < n && i < (int)sizeof(last.path); i++) {
         if (last.path[i] == '/') {
             last.path[i] = '\\';
@@ -201,6 +204,11 @@ static void note_file(const char *verb, const char *host)
     }
     __sync_synchronize();
     last.seq++;
+}
+
+char st_hd_drive(void)
+{
+    return 'A' + (hd.drive >= HD_DRIVE ? hd.drive : HD_DRIVE);     /* (C: before the first start) */
 }
 
 const char *st_hd_last_file(char *path, size_t len)
@@ -355,7 +363,7 @@ static int resolve(const char *st_path, char *host, bool create, char *st_abs)
         }
         drive = current_drive();
     }
-    if (drive != HD_DRIVE) {
+    if (drive != hd.drive) {
         return 0;
     }
 
@@ -723,7 +731,7 @@ static dispatch_t gemdos_call(uint32_t args, int32_t *ret)
     case 0x36: {            /* Dfree(buf, drive) */
         int drive = arg16(args, 6);
         drive = drive ? drive - 1 : current_drive();
-        if (drive != HD_DRIVE) {
+        if (drive != hd.drive) {
             return PASS;
         }
         uint64_t total = 0, free_bytes = 0;
@@ -780,7 +788,7 @@ static dispatch_t gemdos_call(uint32_t args, int32_t *ret)
     case 0x47: {            /* Dgetpath(buf, drive) */
         int drive = arg16(args, 6);
         drive = drive ? drive - 1 : current_drive();
-        if (drive != HD_DRIVE) {
+        if (drive != hd.drive) {
             return PASS;
         }
         uint32_t buf = arg32(args, 2);
@@ -927,7 +935,7 @@ static dispatch_t gemdos_call(uint32_t args, int32_t *ret)
             path2[0] = 0;
         }
         if (path2[0] == 0) {
-            if (current_drive() != HD_DRIVE) {
+            if (current_drive() != hd.drive) {
                 return PASS;
             }
             snprintf(path2, sizeof(path2), ".");
@@ -1020,21 +1028,31 @@ static void native_install(void)
         hd.old_trap1 = trap1;
         st_poke32(SV_TRAP1, CART_BASE + CART_TRAP1);
     }
-    st_poke32(SV_DRVBITS, st_peek32(SV_DRVBITS) | (1u << HD_DRIVE));
+    /* A hard disk image whose driver TOS will boot (next, after the
+     * cartridges) mounts its partitions from C: on: the folder comes after
+     * them, and the image is the boot drive
+     */
+    int partitions = acsi_boot_partitions();
+    hd.drive = HD_DRIVE + (partitions > 0 ? partitions : 0);
+    if (hd.drive > LAST_DRIVE) {
+        hd.drive = LAST_DRIVE;
+    }
+    st_poke32(SV_DRVBITS, st_peek32(SV_DRVBITS) | (1u << hd.drive));
     /* A disk in drive A: boots from there, as games expect */
-    bool boot = hd.boot && !floppy_present(0);
+    bool boot = hd.boot && !floppy_present(0) && partitions <= 0;
     if (boot) {
-        st_poke16(SV_BOOTDEV, HD_DRIVE);
+        st_poke16(SV_BOOTDEV, hd.drive);
         /* The AUTO folder process inherits the boot process's default
          * drive, set from _bootdev before cartridges run. _sysbase isn't
          * set up yet: find the process through the ROM's OS header.
          */
         uint32_t bp = st_peek32(st_peek32(st.rom_base + 0x28));
         if (st_ram_range(bp, 256)) {
-            st_poke8(bp + BP_DEFDRV, HD_DRIVE);
+            st_poke8(bp + BP_DEFDRV, hd.drive);
         }
     }
-    ST_LOGI("GEMDOS drive C: on %s%s", hd.root, boot ? ", boot drive" : "");
+    ST_LOGI("GEMDOS drive %c: on %s%s", 'A' + hd.drive, hd.root, boot ? ", boot drive" :
+            partitions >= 0 ? ", after the hard disk's partitions" : "");
 }
 
 static void native_gemdos(void)
@@ -1153,6 +1171,7 @@ void gemdos_init(const char *root, bool boot)
     last.seq += 2;
     last.verb = NULL;
     last.path[0] = 0;
+    hd.drive = HD_DRIVE;
     if (root != NULL) {
         hd.enabled = true;
         hd.boot = boot;

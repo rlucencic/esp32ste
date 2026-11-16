@@ -2,7 +2,7 @@
 
 <p align="center">
   <b>An Atari STE on a 7-inch ESP32-S3 touch-screen board or an M5Stack Tab5.</b><br>
-  68000 at 8 MHz (on the Tab5 also 16 MHz or as fast as it goes), TOS 1.62 / 2.06, up to 4 MB, floppies, hard disk, Bluetooth keyboard and mouse, the touch screen as a touchpad.
+  68000 at 8 MHz (on the Tab5 also 16 MHz or as fast as it goes), TOS 1.62 / 2.06, up to 4 MB, floppies, hard disk, ACSI hard disk images, Bluetooth keyboard and mouse, the touch screen as a touchpad.
 </p>
 
 <p align="center">
@@ -75,7 +75,14 @@ all are built on the shared runtime
   from any computer, no disk image or driver needed
 - **Floppy drives A: and B:** `.ST` images (read and written) and `.MSA`
   images (read-only), with a WD1772 controller that TOS can format disks on
+- **ACSI hard disks 0 and 1:** raw images of a whole disk (`.IMG`, `.HD`, as
+  Hatari and the MiSTer use them), read and written, in the same folder.
+  With a hard disk driver on the image (AHDI, HDDRIVER, ICD, PPDriver) TOS
+  boots from it and the driver's partitions take C: onward; the SD card then
+  moves to the next free letter. Images are looked for at a reset; the boot
+  image goes on ACSI 0 (TOS 1.62 waits 10 s for a drive 0 that isn't there)
 - **New blank disks** from the setup screen: `EMPTY0001.ST`, `EMPTY0002.ST`, …
+  (floppies; a blank hard disk would need partitioning and a driver)
 - A disk in A: at power-on boots, as games expect
 
 **Around it**
@@ -256,10 +263,13 @@ Fastest the board measures each frame and raises the speed as long as the
 frame still fits in its time.
 
 TOS is patched in RAM, with every patch checked against the expected bytes:
-all resolutions in Set Preferences, no wait for an ACSI hard disk when C: is
-the SD card, and no ROM checksum test. Drive C: works at GEMDOS level through
-a small cartridge program, so programs on the SD card run without a disk
-image or hard disk driver.
+all resolutions in Set Preferences, no ACSI boot scan when C: is the SD card
+and no hard disk image is in, no wait for hard disks to spin up, and no ROM
+checksum test. Drive C: works at GEMDOS level through a small cartridge
+program, so programs on the SD card run without a disk image or hard disk
+driver. Hard disk images sit on the ACSI bus behind the same DMA chip as the
+floppies; the 6-byte ACSI commands and ICD's extended ones (READ CAPACITY,
+10-byte READ and WRITE) are answered.
 
 ## Development
 
@@ -283,7 +293,7 @@ and the lessons learned along the way.
   tried on it by hand yet.
 - `.STX` (Pasti) images of copy-protected originals don't work; `.MSA`
   images are read-only.
-- No FPU, ACSI, MIDI or Mega STE hardware.
+- No FPU, MIDI or Mega STE hardware.
 - Floppy access is faster than a real drive, which a few loaders may notice.
 - On the MaTouch, about 80–85% of real speed on the desktop, and demanding
   demos run slower. It has no time to spare for a faster 68000 (16 MHz ran

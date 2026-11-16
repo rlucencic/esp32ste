@@ -309,6 +309,14 @@ static void run_script(int frame)
             st_floppy_insert(atoi(l->arg[0]), l->arg[1]);
         } else if (strcmp(l->cmd, "eject") == 0) {
             st_floppy_eject(atoi(l->arg[0]));
+        } else if (strcmp(l->cmd, "acsi") == 0) {
+            if (l->arg[1][0]) {
+                st_acsi_insert(atoi(l->arg[0]), l->arg[1]);
+            } else {
+                st_acsi_eject(atoi(l->arg[0]));
+            }
+        } else if (strcmp(l->cmd, "reset") == 0) {
+            st_reset();
         } else if (strcmp(l->cmd, "dump") == 0) {
             FILE *f = fopen(l->arg[0], "wb");
             for (uint32_t a = 0; a < ram_size_for_dump; a += 2) {
@@ -384,6 +392,17 @@ int main(int argc, char **argv)
     }
     cfg.rom = malloc(cfg.tos_size);
     st_audio_enable(getenv("ST_WAV") != NULL);
+    /* ST_ACSI0/1=image: hard disks, there before the first reset (which
+     * decides whether TOS looks for them)
+     */
+    for (int d = 0; d < ST_ACSI_DEVICES; d++) {
+        char name[16];
+        snprintf(name, sizeof(name), "ST_ACSI%d", d);
+        if (getenv(name) && !st_acsi_insert(d, getenv(name))) {
+            fprintf(stderr, "%s: can't use %s\n", name, getenv(name));
+            return 1;
+        }
+    }
     if (!st_init(&cfg)) {
         return 1;
     }
@@ -416,6 +435,8 @@ int main(int argc, char **argv)
     }
     extern bool st_debug_blitter;
     st_debug_blitter = getenv("ST_BLITLOG") != NULL;
+    extern bool st_debug_acsi;
+    st_debug_acsi = getenv("ST_ACSILOG") != NULL;
     bool quiet = getenv("ST_QUIET") != NULL;
     /* ST_DEBUG=<port>: serve the debugger (esp32emu's docs/debugger.md) on
      * 127.0.0.1:<port> and run in real time until killed

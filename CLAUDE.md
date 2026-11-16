@@ -4,7 +4,8 @@ An Atari STE (68000 at 8 MHz, on the Tab5 also 16 MHz or Fastest, TOS
 1.62 / 2.06, up to 4 MB) on two boards: the Makerfabs MaTouch ESP32-S3 7" (1024x600, target
 esp32s3, the default) and the M5Stack Tab5 (ESP32-P4, 1280x720, target
 esp32p4, see "M5Stack Tab5" below). Bluetooth keyboard and mouse, the SD
-card as hard disk C:, floppy disk images in drives A: and B:, an LVGL setup
+card as hard disk C:, floppy disk images in drives A: and B:, ACSI hard
+disk images on devices 0 and 1, an LVGL setup
 screen, and a web page for disk images and live status. ESP-IDF v5.5.4, C.
 
 The board side (tasks, LCD, touch, SD, WiFi, BLE, setup screen, web page,
@@ -21,7 +22,10 @@ Makerfabs MaTouch ESP32-S3 Parallel TFT with Touch 7", ESP32-S3-WROOM-1-N16R8:
 microSD (SDMMC 1-bit), MAX98357A I2S amplifier. Pins are in
 `../esp32emu/components/emu/include/emu/board.h`.
 The board's native USB port is the console (USB-Serial-JTAG), port
-`/dev/cu.usbmodem1101` on the user's Mac. The Tab5 is `/dev/cu.usbmodem3101`
+`/dev/cu.usbmodem1101` on the user's Mac, until the ST starts: sound is on
+(`CONFIG_EMU_SPEAKER`, 2026-11-16) and the MAX98357A takes those pins, so
+the console and flashing are on the USB-to-UART port then
+(`/dev/cu.wchusbserial*`, 921600 baud), the one the user connects. The Tab5 is `/dev/cu.usbmodem3101`
 (its hardware: `../esp32emu/CLAUDE.md`).
 
 ## Build, flash, debug
@@ -161,19 +165,36 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
   `psg.c` + `audio.c` (YM and DMA sound, rendered on another task),
   `fdc.c` (WD1772 + DMA, timed commands, write track for formatting,
   disk-change via the write-protect sensor), `floppy.c` (images),
+  `acsi.c` (ACSI hard disk images behind the same DMA chip and GPIP 5),
   `gemdos.c` (C: drive), `tos_patch.c`.
 - **TOS patches** (`tos_patch.c`, on the RAM copy, each checked against the
   expected bytes first): all resolutions in Set Preferences (TOS 1.62 and
   2.06, with an AES routine using native opcodes to report and adjust the
-  resolution), no ACSI boot scan (1.62) / no hard disk spin-up wait (2.06)
-  when C: is present, no ROM CRC check (2.06: the patched copy failed it).
+  resolution), no ACSI boot scan (1.62: when C: is present and no hard disk
+  image is in), no hard disk spin-up wait (2.06: with C: or an image; it
+  waits until 80 s after power-on whatever is on the bus), both applied or
+  undone at each reset (`tos_patch_hd()`); no ROM CRC check (2.06: the
+  patched copy failed it).
 - **C: drive** (`gemdos.c`): a cartridge at `$FA0000` (init with ca_init bit
   3) installs a GEMDOS trap hook; native calls are illegal opcodes
   `$000A`-`$000E` honoured only inside the cartridge. Files map to the SD
   card with 8.3 names. Programs start with TOS's help: Pexec 5 (basepage) +
   native load/relocate, then the caller's own call is rewritten into
   Pexec 6 and handed to TOS (see the lessons). A disk in A: at power-on
-  makes A: the boot drive instead of C:.
+  makes A: the boot drive instead of C:. When a hard disk image boots (its
+  root sector's words add up to $1234, as TOS checks), its driver takes C:
+  onward: the folder's drive is the letter after the partitions counted in
+  the images (`acsi_boot_partitions()`: AHDI's and ICD's GEM/BGM entries and
+  XGM chains, else a DOS MBR's FAT partitions) and isn't the boot drive
+  (`st_hd_drive()`).
+- **ACSI** (`acsi.c`): with the DMA chip's HDC select, command bytes go to
+  the device in the first byte's top bits; a device with an image answers
+  each with GPIP 5, then moves the data through the DMA and gives its status
+  byte; one without doesn't answer (the driver times out). 6-byte commands
+  (TEST UNIT READY, REQUEST SENSE in both formats, READ, WRITE, SEEK,
+  INQUIRY, MODE SENSE/SELECT, ...) and ICD's `$1F` + SCSI command (READ
+  CAPACITY, READ/WRITE(10)). Images open `r+b` (else read-only), written
+  through and synced after each command; ~4 MB/s.
 - **Floppies** (`floppy.c`): `.ST` read and written through to the file
   (write-protected if read-only); `.MSA` unpacked once into a hidden copy
   `.<name>.st` next to it and used read-only. Blank disks: 720 KB,
@@ -183,7 +204,8 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
 
 - NVS `atari`: `tos` (0/1), `ram_kb`, `rez` (last desktop resolution),
   `cpu` (0 8 MHz, 1 16 MHz, 2 Fastest; read on the Tab5 only).
-- NVS `floppy`: `disk_a`, `disk_b` (file names), `empty_n` (last EMPTYnnnn).
+- NVS `floppy`: `disk_a`, `disk_b` (floppies), `disk_c`, `disk_d` (ACSI 0
+  and 1), `empty_n` (last EMPTYnnnn).
 - NVS `blehid`: `known` (paired devices); NimBLE keeps bonds itself. Shared
   with the Mac firmware (same NVS partition): pairings and WiFi survive
   switching between them.
@@ -191,7 +213,8 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
   screen, the console's `v`), the same for every emulator on the board.
 - WiFi credentials: ESP-IDF's own NVS storage.
 - SD card: C: is the whole card (`CONFIG_ST_HD_FOLDER`), disk images in
-  `floppies/` (made if missing), `EMPTY0001.ST` ... for new blank disks.
+  `floppies/` (made if missing; `.IMG`/`.HD` hard disk images too),
+  `EMPTY0001.ST` ... for new blank disks (floppies only).
 
 ### Web (shared, http://atari-ste.local)
 
@@ -256,6 +279,14 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
   don't): `st_bus_cycle_in_line()` ran before the first frame had set
   `cpu_line_cycles` and only the MaTouch crashed (Guru Meditation on core 0
   at start).
+- **ACSI timing is TOS's own**: TOS 1.62's boot scan waits for each ACSI
+  device until 10 s after power-on (`2000 - hz_200`, at least 50 ms), so a
+  boot image on device 1 alone, or an image TOS can't boot, costs 10 s; on
+  device 0 a driver boots at once. TOS 2.06's spin-up wait asks no drive at
+  all (the memory test, then a bar until 80 s, a key skips it).
+- **Atari hard disk partitions have 16-bit FATs whatever their size**: the
+  HDDRIVER demo's 1215-sector partition says "FAT12" in its boot sector, and
+  a FAT12 reading of it wrote over HDDRIVER.SYS (in a test tool, not here).
 - **Cycle-based speed limits favour long instructions**: on Fastest, Musashi
   runs a 68000 DIVS (~150 cycles) as one cheap instruction, so the controller
   reaches the 256 MHz ceiling in GEMBench's integer division (2589%).
@@ -277,8 +308,10 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
   `ST_GEMDOS=<frame>` (trace GEMDOS calls), `ST_TRACE=<pc>:<n>` +
   `ST_TRACE_FRAME`, `ST_REGS`, `ST_STOP=<pc>[:<frame>]`, `ST_WATCH=<addr>` +
   `ST_WATCH_TRAIL`, `ST_RING=<n>`, `ST_DIS=<addr>`, `ST_VEC=<n>`,
-  `ST_BLITLOG`. Script lines: `<frame> mouse dx dy btn | key <hex> 0|1 |
-  shot <file.ppm> | dump <file> | insert <drive> <path> | eject <drive>`
+  `ST_BLITLOG`; `ST_ACSI0`/`ST_ACSI1=<image>` (in before the first reset),
+  `ST_ACSILOG` (each ACSI command). Script lines: `<frame> mouse dx dy btn |
+  key <hex> 0|1 | shot <file.ppm> | dump <file> | insert <drive> <path> |
+  eject <drive> | acsi <device> [path] | reset`
   (arguments up to 63 characters, up to 4096 lines). The mouse is relative:
   move by -900,+900 first to reach the bottom-left corner (not the
   top-left: the menu bar opens menus, see the lessons); GEM drags need slow
@@ -318,10 +351,28 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
   C: the SD card's. Host: a blank disk 728064 free, TOS's DESKTOP.INF took
   one cluster; Tab5 (2026-10-21): a GEMBench disk 578560 of 728064.
 
+- **ACSI** (2026-11-16, host build): HDDRIVER 13.02's demo image
+  (`hddrdemo130_scsi.img` from hddriver.net) on ACSI 0 boots TOS 1.62 and
+  2.06 (4 MB too): the driver lists "ACSI 0.0: EMU ACSI disk image", mounts
+  C:, the folder is D:. A test program in its AUTO folder wrote 1080 bytes
+  to C: (3 sectors, WRITE(6); the file matched byte for byte in the image)
+  and wrote and read files on D:. HDDRIVER uses READ(6), INQUIRY in both
+  forms and ICD's READ CAPACITY. Desktop at frame 248 (1.62) / 409 (2.06)
+  with the demo's 10 s banner skipped, against 29 / 94 without images;
+  floppies boot as before. An image put in while running is booted from at
+  the next reset. Tab5 (2026-11-16): the image uploaded and inserted
+  through the web API, Start by the console: TOS booted through HDDRIVER
+  (57 sectors read), C: opened by a double click showed its files, the SD
+  card's drive D:. MaTouch: flashed (sound on), the image inserted; booting
+  it there not yet seen; its speed with sound on not measured.
+
 ## Open items
 
 - `.STX` (Pasti) images are not supported; `.MSA` is read-only.
-- No FPU, no ACSI, no MIDI, no Mega STE features.
+- No FPU, no MIDI, no Mega STE features.
+- ACSI: no blank hard disk images (they'd need partitioning and a driver
+  first); no free space for them on the web page; images over 2 GB untried
+  (32-bit `off_t` on the boards).
 - Some Musashi changes are not yet in `patches/`: listed in
   `../esp32emu/components/musashi/README.md`.
 - `docs/images/web.png` and `floppy.png` show the older wording of the drop
