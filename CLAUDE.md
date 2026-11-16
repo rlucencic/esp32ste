@@ -56,9 +56,10 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
   for the start, send, read), and the setup screen can't be driven (its
   console is on native USB): the user taps Start, or a test build has
   `CONFIG_EMU_AUTOSTART`. The web API reads the board without a reset.
-- **ESP-IDF 6.1.1** (branch `idf-6.1`; details and measurements in
-  `../esp32emu/CLAUDE.md`, "ESP-IDF 6.1"): its own build folders, sdkconfig
-  and lock files beside the 5.5.4 ones:
+- **ESP-IDF 6.1.1** (details, measurements and the decision to stay on
+  5.5.4 for now in `../esp32emu/CLAUDE.md`, "ESP-IDF 6.1"; the boards run
+  5.5.4 builds): its own build folders, sdkconfig and lock files beside
+  the 5.5.4 ones:
   ```sh
   bash -c '. ~/.espressif/tools/activate_idf_v6.1.1.sh >/dev/null 2>&1; \
     unset IDF_COMPONENT_LOCAL_STORAGE_URL; \
@@ -385,13 +386,33 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
   (57 sectors read), C: opened by a double click showed its files, the SD
   card's drive D:. MaTouch: flashed (sound on), the image inserted; booting
   it there not yet seen; its speed with sound on not measured.
+- **AHDI 6.061** (Atari's own driver, 2026-11-16, host build; AHDI.PRG from
+  atari-wiki.co.uk, HINSTALL from its AHDI 5.00 package; the whole story and
+  the image's layout in `docs/hard-disks.md`): works with the
+  ACSI emulation. An image made on the Mac (Atari root sector, one `GEM`
+  partition, FAT16, 32766 sectors) mounts as C: with AHDI.PRG in a boot
+  floppy's AUTO folder; but with the SD card's folder (always there on the
+  boards) C: stays the folder, so the image must boot: HINSTALL (menu File,
+  Install, drive C:, OK, OK; it needs `SHDRIVER.RAW` beside it, AHDI.PRG
+  renamed) wrote its loader into the root sector ($1234) and
+  `C:\SHDRIVER.SYS`. That image boots TOS 1.62 and 2.06 (4 MB too), the
+  folder is D:, desktop at frame 110 (1.62). A test program writing 256 KB
+  in 32 KB pieces: AHDI 13-16 frames (~1 MB/s, one 64-sector WRITE(6) a
+  piece), reads 9-10; HDDRIVER 13.02's demo ~19 frames a piece (~70 KB/s:
+  its demo writes slowly on purpose, "significantly slower than the full
+  version"), reads 5. In scripted GEM dialogs a click shows ~20 frames
+  later (the AES waits for a double click): click the next button after
+  that, or it is lost. Tab5 (2026-11-16): that image (`AHDI6061.IMG`, 16 MB)
+  uploaded and put in ACSI 0 through the web API, `POST /api/reset`: TOS
+  1.62 booted through AHDI (94 reads), C: showed SHDRIVER.SYS, Save Desktop
+  wrote C:\DESKTOP.INF (6 writes), the SD card D:.
 
 ## Open items
 
 - `.STX` (Pasti) images are not supported; `.MSA` is read-only.
 - No FPU, no MIDI, no Mega STE features.
 - ACSI: no blank hard disk images (they'd need partitioning and a driver
-  first); no free space for them on the web page; images over 2 GB untried
+  first: `TODO.md` 1, `docs/hard-disks.md`); no free space for them on the web page; images over 2 GB untried
   (32-bit `off_t` on the boards).
 - Some Musashi changes are not yet in `patches/`: listed in
   `../esp32emu/components/musashi/README.md`.
