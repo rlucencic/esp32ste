@@ -1,10 +1,14 @@
 build/
 build-tab5/
+build-idf6/
+build-tab5-idf6/
 managed_components/
 sdkconfig
 sdkconfig.old
 dependencies.lock
 dependencies.lock.esp32p4
+dependencies.lock.idf6
+dependencies.lock.esp32p4.idf6
 components/musashi/test/build/
 roms/*.img
 components/atari_st/host/build/

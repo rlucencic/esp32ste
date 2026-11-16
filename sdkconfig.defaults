@@ -28,6 +28,13 @@ CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
 # FreeRTOS
 CONFIG_FREERTOS_HZ=1000
 
+# ESP-IDF 6 moved FreeRTOS and the ring buffers (the UART console's) out of
+# IRAM; from PSRAM they cost the MaTouch's emulation 5 points of real time
+# (69% instead of 75% on the TOS 2.06 desktop). ESP-IDF 5 keeps them in IRAM
+# without these (and notes them as unknown).
+CONFIG_FREERTOS_IN_IRAM=y
+CONFIG_RINGBUF_IN_IRAM=y
+
 # Optimise for speed (the emulator core also forces -O2 on its own)
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
 

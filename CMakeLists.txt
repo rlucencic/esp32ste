@@ -3,8 +3,9 @@
 # -DSDKCONFIG=build-tab5/sdkconfig ...)
 cmake_minimum_required(VERSION 3.16)
 
-# The shared board runtime and the 68000 core: ../esp32emu
-set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/../esp32emu/components")
+# The shared board runtime and the 68000 core: ../esp32emu (with its copies of
+# ESP-IDF's esp_lcd and fatfs for ESP-IDF 5 or 6)
+include("${CMAKE_CURRENT_LIST_DIR}/../esp32emu/components.cmake")
 
 # The Tab5: the board's settings from ../esp32emu after this project's
 if(IDF_TARGET STREQUAL "esp32p4" OR "$ENV{IDF_TARGET}" STREQUAL "esp32p4")
@@ -14,9 +15,16 @@ endif()
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 idf_build_set_property(MINIMAL_BUILD ON)
+# ESP-IDF 6 solves the components on its own: its own lock files, so going
+# back and forth between ESP-IDF versions doesn't solve them again each time
+if(IDF_VERSION_MAJOR GREATER_EQUAL 6)
+    set(lock_suffix ".idf6")
+endif()
 if(IDF_TARGET STREQUAL "esp32p4")
     # its own components (the BSP, esp_hosted, ...): its own lock file
-    idf_build_set_property(DEPENDENCIES_LOCK "${CMAKE_CURRENT_LIST_DIR}/dependencies.lock.esp32p4")
+    idf_build_set_property(DEPENDENCIES_LOCK "${CMAKE_CURRENT_LIST_DIR}/dependencies.lock.esp32p4${lock_suffix}")
+elseif(lock_suffix)
+    idf_build_set_property(DEPENDENCIES_LOCK "${CMAKE_CURRENT_LIST_DIR}/dependencies.lock${lock_suffix}")
 endif()
 project(esp32ste)
 

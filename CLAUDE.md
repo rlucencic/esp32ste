@@ -50,7 +50,27 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
   wins), then `idf.py reconfigure`.
 - `../esp32emu/tools/emu_console.py PORT log N | screenshot F.png | lcd F.png | send "cmd" ... | info | reset`.
   Run it with that venv's Python (`.../venv/bin/python -I`); system Python
-  has no pyserial. Opening the port keeps DTR high so the board doesn't reset.
+  has no pyserial. Opening the native USB port keeps DTR high so the board
+  doesn't reset; opening the USB-to-UART port always resets it (the
+  MaTouch with sound on), so there one session must do everything (wait
+  for the start, send, read), and the setup screen can't be driven (its
+  console is on native USB): the user taps Start, or a test build has
+  `CONFIG_EMU_AUTOSTART`. The web API reads the board without a reset.
+- **ESP-IDF 6.1.1** (branch `idf-6.1`; details and measurements in
+  `../esp32emu/CLAUDE.md`, "ESP-IDF 6.1"): its own build folders, sdkconfig
+  and lock files beside the 5.5.4 ones:
+  ```sh
+  bash -c '. ~/.espressif/tools/activate_idf_v6.1.1.sh >/dev/null 2>&1; \
+    unset IDF_COMPONENT_LOCAL_STORAGE_URL; \
+    idf.py -B build-idf6 -DSDKCONFIG=$PWD/build-idf6/sdkconfig build && \
+    idf.py -B build-idf6 -DSDKCONFIG=$PWD/build-idf6/sdkconfig -p PORT flash -a'
+  ```
+  The Tab5: `-B build-tab5-idf6 -DIDF_TARGET=esp32p4
+  -DSDKCONFIG=$PWD/build-tab5-idf6/sdkconfig`. Checked 2026-11-16: both
+  boards boot and run TOS (Tab5: WiFi, Bluetooth, sound, the ACSI image,
+  web page; 100%, core 1 40-42%); MaTouch 73-75% on the TOS 2.06 4 MB high
+  res desktop against 76-77% on 5.5.4, with `CONFIG_FREERTOS_IN_IRAM` and
+  `CONFIG_RINGBUF_IN_IRAM` (`sdkconfig.defaults`; 69-70% without).
 - `CONFIG_ST_*` options for WiFi, web, setup screen, BLE and speaker became
   `CONFIG_EMU_*` (menu "Emulator board"); `main/sdkconfig.rename` carries
   old values over.
