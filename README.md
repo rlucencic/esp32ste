@@ -178,8 +178,10 @@ own flash; WiFi networks are remembered by its ESP32-C6.
 | …or from the command line | `curl -T game.st http://atari-ste.local/disks/` |
 | Use programs from the SD card | Copy them anywhere on the card; they're on drive C: |
 
-Disk images live in the `floppies` folder on the SD card. The inserted disks
-are remembered across restarts.
+Disk images live in the `st` folder on the SD card, the ST's own (until
+2026-11-17 `floppies`, shared with the Archimedes and the Amiga: esp32emu's
+`tools/sd_folders.ps1 E:\` moves an older card's files into each machine's
+folder). The inserted disks are remembered across restarts.
 
 <p align="center">
   <img src="docs/images/floppy.png" width="60%" alt="Floppy page: drives A: and B: with Insert disk, New empty disk and Eject">
@@ -195,7 +197,6 @@ are remembered across restarts.
 | Monochrome monitor | off | Start in high resolution |
 | Offer all resolutions | on | Low, medium and high in Set Preferences |
 | SD card as hard disk C: | on | Optionally only a folder of the card; boot from C: |
-| Floppy folder | `floppies` | Where disk images are kept |
 
 and → **Emulator board** (the shared runtime):
 
@@ -221,7 +222,7 @@ flowchart LR
     BLE[Bluetooth HID · touchpad]
   end
   PSRAM[(PSRAM<br>ST RAM · framebuffer)]
-  SD[(microSD<br>C: · floppies/)]
+  SD[(microSD<br>C: · st/)]
   EMU <--> PSRAM
   PRES --> LCD[1024×600 or 1280×720 panel]
   PSRAM --> PRES

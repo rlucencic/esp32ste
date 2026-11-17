@@ -508,7 +508,7 @@ static void floppy_removed(const char *path)
 }
 
 static const disks_config_t disks = {
-    .folder = CONFIG_ST_FLOPPY_FOLDER,
+    .folder = "st",
     .extensions = extensions,
     .description = "Disk images (.ST, .MSA; .IMG, .HD hard disks)",
     .title = "Disks",

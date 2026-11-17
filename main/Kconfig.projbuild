@@ -77,15 +77,6 @@ menu "Atari STE emulator"
             TOS runs C:\AUTO and reads DESKTOP.INF from C:, and skips its
             wait for an ACSI hard disk.
 
-    config ST_FLOPPY_FOLDER
-        string "Folder on the SD card for floppy disk images"
-        default "floppies"
-        help
-            Relative to the card's root. Disk images (.ST, .MSA) in it can be
-            put into drives A: and B: on the setup screen or the web page;
-            new blank disks (EMPTY0001.ST, ...) are made there. Made if
-            missing.
-
 endmenu
 
 # WiFi, web page, setup screen, Bluetooth and speaker: "Emulator board"

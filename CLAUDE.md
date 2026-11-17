@@ -237,8 +237,12 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
   screen, the console's `v`), the same for every emulator on the board.
 - WiFi credentials: ESP-IDF's own NVS storage.
 - SD card: C: is the whole card (`CONFIG_ST_HD_FOLDER`), disk images in
-  `floppies/` (made if missing; `.IMG`/`.HD` hard disk images too),
-  `EMPTY0001.ST` ... for new blank disks (floppies only).
+  `st/` (made if missing; `.IMG`/`.HD` hard disk images too),
+  `EMPTY0001.ST` ... for new blank disks (floppies only). Until 2026-11-17
+  `floppies/`, shared with the Archimedes and the Amiga, and set by
+  `CONFIG_ST_FLOPPY_FOLDER` (gone): every machine has its own folder now,
+  and esp32emu's `tools/sd_folders.ps1` moves an old card's files. TOS
+  comes only from flash, never the card.
 
 ### Web (shared, http://atari-ste.local)
 
@@ -251,7 +255,7 @@ browser (`DecompressionStream`). The page also takes a machine script
 browser; the Mac uses it for StuffIt archives, the ST has none. The drop
 area reads "Drop disk images (.ST, .MSA) or .ZIP files here", and the
 setup screen's floppy page "Disk images (.ST, .MSA) from the SD card's
-"floppies" folder." (both reworded for the Mac's longer texts).
+"st" folder." (both reworded for the Mac's longer texts).
 
 ## Memory budget (measured)
 

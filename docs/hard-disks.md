@@ -1,7 +1,7 @@
 # Hard disks (ACSI): drivers and new hard disk images
 
 The STE has two ACSI hard disks, `ACSI 0` and `ACSI 1`, each an image file
-(`.IMG`, `.HD`) in the SD card's `floppies` folder (`components/atari_st/acsi.c`).
+(`.IMG`, `.HD`) in the SD card's `st` folder (`components/atari_st/acsi.c`).
 The web page uploads and inserts them. The "New" button makes only 720 KB
 floppies, though. This page says why, what works today, and how new hard
 disks could come with a driver already installed (TODO.md, item 1).
@@ -100,7 +100,7 @@ for a possible double click); a click on OK within that time is lost.
 
 "New" for ACSI 0/1 formats the image itself (step 1 above, in C) and then
 copies the driver from a bootable AHDI disk the user already has in the
-`floppies` folder (like the one made above):
+`st` folder (like the one made above):
 
 - the root sector's loader (bytes `$000`-`$1BF`), with the checksum word
   made again so the words add up to `$1234`; partition 0 flagged `$81`;

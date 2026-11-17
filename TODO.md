@@ -23,7 +23,7 @@ Where: `main/main.c` (`disks_config_t`: hard disk sizes, `takes_blank()`,
 How (recommended, A in the doc): "New" for ACSI 0/1 writes the root
 sector, partitions and empty FAT16 filesystems itself, then copies the
 loader (root sector `$000`-`$1BF`, checksum made again to `$1234`) and
-`SHDRIVER.SYS` from a bootable AHDI disk the user keeps in the `floppies`
+`SHDRIVER.SYS` from a bootable AHDI disk the user keeps in the `st`
 folder. Without one there, it offers floppies only and says why. The
 alternative (B): a loader of our own (MIT, ~400 bytes of hand-assembled
 68000) loading `AHDI.PRG` from the card: no ready-made disk needed, more
