@@ -36,8 +36,9 @@ void settings_load(void)
     if (nvs_get_i8(h, "rez", &i8) == ESP_OK && i8 >= -1 && i8 <= 2) {
         settings.resolution = i8;
     }
-    if (SETTINGS_CPU_CHOICE && nvs_get_u8(h, "cpu", &u8) == ESP_OK && u8 <= SETTINGS_CPU_FASTEST) {
-        settings.cpu = u8;
+    /* 2 was Fastest, gone: 16 MHz */
+    if (SETTINGS_CPU_CHOICE && nvs_get_u8(h, "cpu", &u8) == ESP_OK && u8 <= 2) {
+        settings.cpu = u8 >= 1 ? SETTINGS_CPU_16MHZ : SETTINGS_CPU_8MHZ;
     }
     nvs_close(h);
 }

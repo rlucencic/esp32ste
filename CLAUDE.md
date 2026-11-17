@@ -1,6 +1,6 @@
 # esp32ste: Atari STE emulator on the Makerfabs MaTouch ESP32-S3 7" and the M5Stack Tab5
 
-An Atari STE (68000 at 8 MHz, on the Tab5 also 16 MHz or Fastest, TOS
+An Atari STE (68000 at 8 MHz, on the Tab5 also 16 MHz, TOS
 1.62 / 2.06, up to 4 MB) on two boards: the Makerfabs MaTouch ESP32-S3 7" (1024x600, target
 esp32s3, the default) and the M5Stack Tab5 (ESP32-P4, 1280x720, target
 esp32p4, see "M5Stack Tab5" below). Bluetooth keyboard and mouse, the SD
@@ -87,9 +87,11 @@ simulated touch (use it to drive the setup screen remotely; one tap per
 the LCD's recovery: "LCD output was out of step" in the log); the ST's own
 (in `main/main.c`): `k <hex>`
 tap a key, `m dx dy btn` mouse, `R <tos 0|1> <ram KB>` restart with that
-TOS/RAM, `C <0|1|2>` CPU 8 MHz / 16 MHz / Fastest (live, Tab5 only). Touches
+TOS/RAM, `C <0|1>` CPU 8 MHz / 16 MHz (live, Tab5 only). Touches
 are in the board's picture pixels: Start is `t 850 532` on the MaTouch,
-`t 1065 637` on the Tab5; the Tab5's CPU row buttons `t 380|618|855 403`.
+`t 1065 637` on the Tab5; the Tab5's CPU row buttons about `t 440|795 403`
+(worked out from the three-button row's 380|618|855: not measured since
+Fastest went).
 Sending several commands needs ~0.1 s between them through the
 tool; a GEM double-click needs them faster (write to the port directly).
 
@@ -144,8 +146,8 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
 - `main/main.c` plugs the ST in: `reserve_memory()` (settings, ST RAM + ROM
   copy + opcode tables, first thing), `storage()` (C: on the SD card),
   `start()` (TOS from its partition, `st_init()`), the setup screen choices
-  (TOS, RAM; CPU speed, live, Tab5 only), `run_frame()` (the CPU speed, Fastest's
-  controller), the floppy drives (`disks_config_t`), key map (HID usages ->
+  (TOS, RAM; CPU speed, live, Tab5 only), `run_frame()` (the CPU speed),
+  the floppy drives (`disks_config_t`), key map (HID usages ->
   ST scancodes, both Controls/Alternates on one ST key), the mouse and
   esp32emu's touchpad (`.touchpad = hid_mouse`: a count a pixel, as GEM
   moves the pointer in every resolution), status rows and console
@@ -169,15 +171,15 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
   position within a line (video counter, audio clock) go through
   `st_bus_cycle_in_line()`; the blitter's bus time is charged x speed. At
   256 all of it is the old arithmetic exactly (GEMBench 107%, same scores).
-  `main.c`: 8 MHz, 16 MHz, or Fastest: before each frame the emulation task
-  sets the speed; Fastest aims the frame's emulation at 85% of its period
-  (`FASTEST_SHARE`), slowing down by half the gap, speeding up by an eighth,
-  8 to 256 MHz. The setting is `live` (no restart). Console: `C <0|1|2>`.
+  `main.c`: 8 or 16 MHz: before each frame the emulation task sets the
+  speed. The setting is `live` (no restart). Console: `C <0|1>`. A third
+  choice, Fastest (as fast as the frames still came in time, 8 to 256 MHz),
+  was taken out on 2026-11-17: no other machine of the family has one; a
+  saved Fastest reads as 16 MHz.
   **Tab5 only** (`SETTINGS_CPU_CHOICE`, `settings.h`): the MaTouch build has
   no CPU row or `C` command, ignores the NVS `cpu` key and runs at 8 MHz.
   It has no time to spare: 16 MHz ran at ~45% of real time (6.7 vs 7.2 MHz
-  worth of 68000 work per second, for half-speed timers, sound and input),
-  Fastest never left 8 MHz.
+  worth of 68000 work per second, for half-speed timers, sound and input).
 - `mem.c` memory map, `io.c` I/O map (unmapped I/O raises bus errors; TOS
   probes hardware that way), `mfp.c`, `acia.c` (IKBD, clock from `time()`; its input queue is fed by several
   tasks, Bluetooth, USB, the Tab5 Keyboard, the touchpad, the console:
@@ -224,7 +226,8 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
 ### Persistent state
 
 - NVS `atari`: `tos` (0/1), `ram_kb`, `rez` (last desktop resolution),
-  `cpu` (0 8 MHz, 1 16 MHz, 2 Fastest; read on the Tab5 only).
+  `cpu` (0 8 MHz, 1 16 MHz; 2, the old Fastest, reads as 16 MHz; read on
+  the Tab5 only).
 - NVS `floppy`: `disk_a`, `disk_b` (floppies), `disk_c`, `disk_d` (ACSI 0
   and 1), `empty_n` (last EMPTYnnnn).
 - NVS `blehid`: `known` (paired devices); NimBLE keeps bonds itself. Shared
@@ -308,9 +311,10 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
 - **Atari hard disk partitions have 16-bit FATs whatever their size**: the
   HDDRIVER demo's 1215-sector partition says "FAT12" in its boot sector, and
   a FAT12 reading of it wrote over HDDRIVER.SYS (in a test tool, not here).
-- **Cycle-based speed limits favour long instructions**: on Fastest, Musashi
-  runs a 68000 DIVS (~150 cycles) as one cheap instruction, so the controller
-  reaches the 256 MHz ceiling in GEMBench's integer division (2589%).
+- **Cycle-based speed limits favour long instructions**: on Fastest (since
+  taken out), Musashi ran a 68000 DIVS (~150 cycles) as one cheap
+  instruction, so the controller reached the 256 MHz ceiling in GEMBench's
+  integer division (2589%).
 
 ## Testing
 
@@ -343,14 +347,14 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
   "Delta Labs 165" disk at downloads.atari-home.de) runs in the host build
   from C: or A:. GEMBench 6.31, TOS 1.62, high res, 1 MB: 107% average at
   8 MHz (host, MaTouch, Tab5: the same emulated machine), 205% at 16 MHz,
-  385% at 32 MHz (host) and on Fastest (Tab5). Its timer is emulated time:
+  385% at 32 MHz (host). Its timer is emulated time:
   a slower board gives the same scores, only later. On the board: a 720 KB
   image with GEMBench 6.31 (folders BIN, SETS) uploaded to `floppies/`,
   inserted in A:, run through the console's `m` mouse moves (double-clicks
   written straight to the port, ~0.05 s apart).
 - **Real time during GEMBench** (sampled from the web API every 5 s): Tab5
   8 MHz 99-103%, core 1 ~40% (up to 53%), ~5 min; 16 MHz 99-101%, core 1 up
-  to 93%, ~2 3/4 min; Fastest 99-101%, 15-20 MHz in the drawing tests.
+  to 93%, ~2 3/4 min.
   MaTouch 8 MHz 51-101% (~78% average), core 1 ~90%, ~6 1/2 min; 16 MHz
   ~45% on the desktop (why its build is now 8 MHz only).
 - **On the board:** status via the web API, screenshots via the console,
@@ -422,7 +426,7 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
 - README images: `setup.png` (the MaTouch's setup screen: two rows, no CPU
   choice there; checked identical to a capture on 2026-10-17; the old
   `setup-cpu.png` with a MaTouch CPU row is gone), `gembench.png` (8 MHz,
-  host), `gembench-16mhz.png` and `gembench-fastest.png` (Tab5),
+  host), `gembench-16mhz.png` (Tab5),
   `tab5-setup.png`, `tab5-desktop.png` (the Tab5's whole 1280x720 picture).
 - Floppy timing is about 10x faster than a real drive (2 ms per sector).
 - Public on GitHub (`github.com/rlucencic/esp32ste`, pushed to `main`).

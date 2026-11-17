@@ -24,10 +24,9 @@
   <img src="docs/images/gembench.png" width="49%" alt="GEMBench 6.31 at 8 MHz: 107% of a real STE">
   <br>
   <img src="docs/images/gembench-16mhz.png" width="49%" alt="GEMBench 6.31 with the 68000 at 16 MHz on the Tab5: 205% of a real STE">
-  <img src="docs/images/gembench-fastest.png" width="49%" alt="GEMBench 6.31 on Fastest on the Tab5: 385% of a real STE">
   <br>
-  <sub>GEMBench 6.31 (TOS 1.62, high resolution, 1 MB): 107% of an STE at 8 MHz, 205% at
-  16 MHz and 385% on Fastest, on the M5Stack Tab5 in real time.</sub>
+  <sub>GEMBench 6.31 (TOS 1.62, high resolution, 1 MB): 107% of an STE at 8 MHz and 205% at
+  16 MHz, on the M5Stack Tab5 in real time.</sub>
 </p>
 
 esp32ste turns the Makerfabs MaTouch ESP32-S3 Parallel TFT with Touch 7", or an
@@ -59,10 +58,9 @@ all are built on the shared runtime
 
 **The machine**
 - 68000 ([Musashi](https://github.com/kstenerud/Musashi) core) at **8 MHz** like an STE. On the
-  Tab5 also faster, like an accelerator board: **16 MHz**, or **Fastest**, as
-  fast as it keeps real time (16–20 MHz in GEM, far more in tight loops). The
-  rest of the machine keeps the STE's timing; the choice applies at once,
-  no restart. The MaTouch has no time to spare for it and stays at 8 MHz
+  Tab5 also faster, like an accelerator board: **16 MHz**. The rest of the
+  machine keeps the STE's timing; the choice applies at once, no restart.
+  The MaTouch has no time to spare for it and stays at 8 MHz
 - Real-time speed at 8 MHz: 100% on the Tab5, about 80–85% on the MaTouch
 - TOS 1.62 or 2.06, chosen on the setup screen
 - 512 KB, 1 MB or 4 MB of RAM
@@ -173,7 +171,7 @@ own flash; WiFi networks are remembered by its ESP32-C6.
 | Get back to the setup screen | Hold the top-right corner of the screen for 2 s |
 | Use the mouse without one | The touch screen is a touchpad: drag a finger anywhere to move the pointer, tap to click, tap and touch again to drag, hold still for half a second for the right button |
 | Change TOS or RAM | On the setup screen; **Restart** applies it |
-| Change the CPU speed (Tab5) | On the setup screen, at once: 8 MHz for exact STE timing (games, demos), 16 MHz or Fastest for GEM and applications |
+| Change the CPU speed (Tab5) | On the setup screen, at once: 8 MHz for exact STE timing (games, demos), 16 MHz for GEM and applications |
 | Insert a floppy | Setup screen → **Floppy** → **Insert disk**, or **Insert into…** on the web page |
 | Make a blank floppy | Setup screen → **Floppy** → **New empty disk** |
 | Copy disk images from a computer | Open `http://atari-ste.local` and drop them onto the page (ZIP files are unpacked) |
@@ -258,9 +256,7 @@ flowchart LR
 
 On the Tab5 the 68000 can run faster than the rest of the machine: per scanline it gets
 the STE's 8 MHz worth of cycles times the CPU speed, while video, timers,
-sound, the blitter and the floppy keep counting the STE's bus cycles. On
-Fastest the board measures each frame and raises the speed as long as the
-frame still fits in its time.
+sound, the blitter and the floppy keep counting the STE's bus cycles.
 
 TOS is patched in RAM, with every patch checked against the expected bytes:
 all resolutions in Set Preferences, no ACSI boot scan when C: is the SD card
@@ -299,7 +295,7 @@ and the lessons learned along the way.
   demos run slower. It has no time to spare for a faster 68000 (16 MHz ran
   at about 45% of real time), so it stays at 8 MHz. The Tab5 keeps 100% at
   8 and 16 MHz.
-- 16 MHz and Fastest (Tab5) change a program's timing as an accelerator would:
+- 16 MHz (Tab5) changes a program's timing as an accelerator would:
   games and demos that count on an 8 MHz 68000 can misbehave.
 
 ## Credits
