@@ -50,7 +50,8 @@ LC II and LC III, Tab5 only),
 [esp32coco](https://github.com/rlucencic/esp32coco) (Tandy Color Computer 2
 and 3),
 [esp32pc](https://github.com/rlucencic/esp32pc) (IBM PC/XT and PC/AT),
-[esp32ql](https://github.com/rlucencic/esp32ql) (Sinclair QL) and
+[esp32ql](https://github.com/rlucencic/esp32ql) (Sinclair QL),
+[esp32electron](https://github.com/rlucencic/esp32electron) (Acorn Electron) and
 [esp32ami](https://github.com/rlucencic/esp32ami) (Amiga 500, 2000 and 600);
 all are built on the shared runtime
 [esp32emu](https://github.com/rlucencic/esp32emu).
@@ -249,7 +250,8 @@ flowchart LR
   [esp32gs](https://github.com/rlucencic/esp32gs),
   [esp32coco](https://github.com/rlucencic/esp32coco),
   [esp32pc](https://github.com/rlucencic/esp32pc),
-  [esp32ql](https://github.com/rlucencic/esp32ql) and
+  [esp32ql](https://github.com/rlucencic/esp32ql),
+  [esp32electron](https://github.com/rlucencic/esp32electron) and
   [esp32ami](https://github.com/rlucencic/esp32ami)): the board runtime for
   both boards (display, touch, SD card, WiFi, Bluetooth, setup screen, web
   page, serial console; on the Tab5 its ESP32-C6 radio, keyboard and
