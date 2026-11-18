@@ -43,6 +43,11 @@ uint8_t psg_port_a(void)
     return psg.reg[14];
 }
 
+void psg_sound_registers(uint8_t reg[14])
+{
+    memcpy(reg, psg.reg, 14);
+}
+
 uint8_t psg_read(uint32_t a)
 {
     if ((a & 3) == 0) {

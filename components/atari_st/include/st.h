@@ -74,6 +74,9 @@ typedef struct {
     uint32_t vbclock;       /* TOS _vbclock counter */
     uint32_t bus_errors;
     bool halted;            /* CPU stopped by a double bus fault until a reset */
+    uint8_t mmu_config;     /* $FF8001: bank 0 in bits 3-2, bank 1 in 1-0 */
+    uint32_t rom_base;      /* TOS: $FC0000 (192 KB) or $E00000 (256 KB) */
+    uint32_t rom_size;
 } st_status_t;
 
 /* Set up the machine and cold-reset it. False if the TOS image is unusable. */
@@ -95,6 +98,54 @@ void st_set_cpu_speed(unsigned speed);
 unsigned st_cpu_speed(void);
 
 void st_get_status(st_status_t *status);
+
+/* ---- The chips' state, for a status page ----
+ *
+ * Plain values copied from the emulation, safe to call from another task
+ * (they may be a frame old); no side effects.
+ */
+typedef struct {
+    uint8_t mode;           /* $FF8260 as this frame shows it: 0 low, 1 medium, 2 high */
+    uint8_t hz;             /* 50, 60, 71 */
+    uint32_t base;          /* this frame's video base address */
+    uint8_t line_offset;    /* $FF820F: words skipped after each line */
+    uint8_t hscroll;        /* $FF8265: pixels scrolled */
+    uint16_t palette[16];   /* $FF8240-$FF825E: $0RGB, each nibble's bit 3 its lowest bit */
+} st_video_status_t;
+
+void st_get_video_status(st_video_status_t *status);
+
+typedef struct {
+    uint8_t ym[14];         /* the YM2149's sound registers as the 68000 wrote them */
+    uint8_t dma_control;    /* $FF8901: bit 0 playing, bit 1 repeat */
+    uint8_t dma_mode;       /* $FF8921: bits 0-1 rate (6258 Hz x 2^n), bit 7 mono */
+    uint32_t dma_start, dma_end;
+    /* The LMC1992 as the Microwire set it: master 0 to -80 dB, left and
+     * right 0 to -40 dB; mix 0 the YM at -12 dB, 1 mixed, 2 no YM
+     */
+    int8_t master_db, left_db, right_db;
+    uint8_t mix;
+} st_sound_status_t;
+
+void st_get_sound_status(st_sound_status_t *status);
+
+typedef struct {
+    uint16_t enabled;       /* MFP channels enabled and unmasked, bit n channel n */
+    uint8_t timer_mode[4];  /* A-D: 0 stopped, 1-7 delay (prescaler 4 .. 200), 8 event count */
+    uint8_t timer_data[4];  /* reload values, 0 = 256 */
+} st_mfp_status_t;
+
+void st_get_mfp_status(st_mfp_status_t *status);
+
+typedef struct {
+    uint8_t mouse_mode;     /* 0 relative, 1 absolute, 2 keycodes, 3 off */
+    uint8_t joystick_mode;  /* 0 events, 1 interrogated, 2 off */
+    bool paused;            /* output paused ($13) */
+    uint8_t buttons;        /* bit 1 left, bit 0 right */
+    int64_t clock;          /* the IKBD's clock now: the host's time_t plus the ST's offset */
+} st_ikbd_status_t;
+
+void st_get_ikbd_status(st_ikbd_status_t *status);
 
 /* Free ST RAM as GEMDOS sees it (Malloc(-1) gives the largest block), in
  * bytes; false before GEMDOS is up. Safe to call from another task.

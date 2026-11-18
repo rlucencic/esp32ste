@@ -184,6 +184,7 @@ void psg_reset(void);
 uint8_t psg_read(uint32_t address);
 void psg_write(uint32_t address, uint8_t value);
 uint8_t psg_port_a(void);       /* bit 0 side, bit 1 drive A, bit 2 drive B (active low) */
+void psg_sound_registers(uint8_t reg[14]);  /* registers 0-13 as the CPU wrote them */
 
 /* audio.c: DMA sound, Microwire, mixing ($FF8900-$FF893F) */
 void audio_init(void);

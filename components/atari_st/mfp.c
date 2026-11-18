@@ -120,6 +120,15 @@ void mfp_reset(void)
     mfp.tsr = TSR_BUFFER_EMPTY;
 }
 
+void st_get_mfp_status(st_mfp_status_t *status)
+{
+    status->enabled = mfp.ier & mfp.imr;
+    for (int t = 0; t < 4; t++) {
+        status->timer_mode[t] = mfp.timer[t].mode;
+        status->timer_data[t] = mfp.timer[t].reload;
+    }
+}
+
 static uint8_t timer_read(int t)
 {
     return mfp.timer[t].counter;

@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <time.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_heap_caps.h"
@@ -531,34 +532,234 @@ static const disks_config_t disks = {
     .takes_blank = disk_takes_blank,
 };
 
-/* ---- Status ---- */
+/* ---- Status ----
+ *
+ * The machine card on the web page: the chips' state now, from the core's
+ * status getters (plain values, read on the web server's task). The whole
+ * /api/status reply has 4 KB (esp32emu's STATUS_SIZE): the rows are short.
+ */
+
+static uint32_t peek32(uint32_t address)
+{
+    return ((uint32_t)st_peek16(address) << 16) | st_peek16(address + 2);
+}
+
+/* An MFP timer: its rate, or what it counts */
+static void timer_text(char *buf, size_t len, const st_mfp_status_t *m, int t)
+{
+    static const uint16_t prescale[8] = { 1, 4, 10, 16, 50, 64, 100, 200 };
+    unsigned mode = m->timer_mode[t], data = m->timer_data[t] ? m->timer_data[t] : 256;
+    char name = "ABCD"[t];
+    if (mode == 0) {
+        snprintf(buf, len, "Timer %c (stopped)", name);
+    } else if (mode == 8 && t == 1) {
+        snprintf(buf, len, data == 1 ? "Timer B each line" : "Timer B every %u lines", data);
+    } else if (mode == 8) {
+        snprintf(buf, len, "Timer %c every %u sound frames", name, data);
+    } else {
+        snprintf(buf, len, "Timer %c %lu Hz", name, (2457600ul / prescale[mode & 7] + data / 2) / data);
+    }
+}
+
+static void status_rows(emu_json_t *j)
+{
+    static char text[1024];             /* (the web server's task: not on its stack) */
+    size_t n;
+    st_status_t s;
+    st_get_status(&s);
+
+    uint16_t ram_kb = s_cfg.ram_size / 1024;
+    char ram[16];
+    snprintf(ram, sizeof(ram), ram_kb >= 1024 ? "%u MB" : "%u KB", ram_kb >= 1024 ? ram_kb / 1024 : ram_kb);
+    float mhz = ST_MHZ(st_cpu_speed());
+    snprintf(text, sizeof(text), "Atari STE: a 68000 at %.0f MHz%s, %s RAM, blitter, YM2149, DMA sound", mhz,
+             mhz > 8.5f ? " (8 MHz bus)" : "", ram);
+    emu_json_row(j, "System", text);
+
+    /* TOS's header: os_date $MMDDYYYY at $18, os_conf (country << 1 | PAL) at $1C */
+    static const char *const countries[] = {
+        "US", "German", "French", "UK", "Spanish", "Italian", "Swedish", "Swiss French", "Swiss German",
+        "Turkish", "Finnish", "Norwegian", "Danish", "Saudi", "Dutch", "Czech", "Hungarian",
+    };
+    unsigned country = st_peek16(s.rom_base + 0x1C) >> 1;
+    snprintf(text, sizeof(text), "TOS %x.%02x (%s%s%x), %lu KB at $%06lX", s_tos_version >> 8, s_tos_version & 0xFF,
+             country < sizeof(countries) / sizeof(countries[0]) ? countries[country] : "",
+             country < sizeof(countries) / sizeof(countries[0]) ? ", " : "", st_peek16(s.rom_base + 0x1A),
+             (unsigned long)(s.rom_size / 1024), (unsigned long)s.rom_base);
+    emu_json_row(j, "ROM", text);
+
+    /* The MMU's banks (%00 128 KB, %01 512 KB, %10 2 MB), TOS's program area */
+    static const char *const banks[4] = { "128 KB", "512 KB", "2 MB", "?" };
+    static const uint32_t bank_kb[4] = { 128, 512, 2048, 0 };
+    unsigned bank0 = (s.mmu_config >> 2) & 3, bank1 = s.mmu_config & 3;
+    if (ram_kb <= bank_kb[bank0]) {
+        n = snprintf(text, sizeof(text), "MMU $%02X: one %s bank", s.mmu_config, banks[bank0]);
+    } else if (bank0 == bank1) {
+        n = snprintf(text, sizeof(text), "MMU $%02X: two %s banks", s.mmu_config, banks[bank0]);
+    } else {
+        n = snprintf(text, sizeof(text), "MMU $%02X: %s and %s banks", s.mmu_config, banks[bank0], banks[bank1]);
+    }
+    uint32_t membot = peek32(0x432), memtop = peek32(0x436);
+    if (memtop != 0 && n < sizeof(text)) {
+        snprintf(text + n, sizeof(text) - n, "; programs $%06lX-$%06lX", (unsigned long)membot, (unsigned long)memtop);
+    }
+    emu_json_row(j, "Memory", text);
+    uint32_t ram_free, ram_largest;
+    if (st_ram_free(&ram_free, &ram_largest)) {
+        n = snprintf(text, sizeof(text), "%lu KB of %s", (unsigned long)(ram_free / 1024), ram);
+        if (ram_largest < ram_free) {
+            snprintf(text + n, sizeof(text) - n, " <span class=\"dim\">(largest block %lu KB)</span>",
+                     (unsigned long)(ram_largest / 1024));
+        }
+        emu_json_row_bar(j, "Free RAM", text, 100 - (int)((uint64_t)ram_free * 100 / s_cfg.ram_size));
+    }
+
+    static const char *const modes[3] = {
+        "Low resolution: 320 × 200, 16 colours", "Medium resolution: 640 × 200, 4 colours",
+        "High resolution: 640 × 400, black and white",
+    };
+    st_video_status_t v;
+    st_get_video_status(&v);
+    unsigned mode = v.mode < 3 ? v.mode : 0;
+    n = snprintf(text, sizeof(text), "%s, %u Hz, at $%06lX", modes[mode], v.hz, (unsigned long)v.base);
+    if (v.hscroll && n < sizeof(text)) {
+        n += snprintf(text + n, sizeof(text) - n, "; scrolled %u pixels", v.hscroll);
+    }
+    if (v.line_offset && n < sizeof(text)) {
+        snprintf(text + n, sizeof(text) - n, "%s%u words skipped a line", v.hscroll ? ", " : "; ", v.line_offset);
+    }
+    emu_json_row(j, "Screen", text);
+
+    /* The colours in use as swatches: 4 bits a gun, its lowest bit on top */
+    uint16_t colours[16];
+    int count = mode == 0 ? 16 : 4;
+    if (mode == 2) {
+        bool white_paper = v.palette[0] & 1;       /* (high resolution: palette 0 bit 0) */
+        colours[0] = white_paper ? 0x0FFF : 0;
+        colours[1] = white_paper ? 0 : 0x0FFF;
+        count = 2;
+        n = snprintf(text, sizeof(text), "%s: ", white_paper ? "Black on white" : "White on black (inverted)");
+    } else {
+        memcpy(colours, v.palette, sizeof(colours));
+        n = snprintf(text, sizeof(text), "%d of 4096 colours: ", count);
+    }
+    for (int i = 0; i < count && n < sizeof(text); i++) {
+        unsigned c = colours[i];
+        unsigned r = (c >> 8) & 15, g = (c >> 4) & 15, b = c & 15;
+        n += snprintf(text + n, sizeof(text) - n, "<b style=\"background:#%x%x%x\">&nbsp;&nbsp;&nbsp;</b> ",
+                      ((r & 7) << 1) | (r >> 3), ((g & 7) << 1) | (g >> 3), ((b & 7) << 1) | (b >> 3));
+    }
+    emu_json_row(j, "Palette", text);
+
+    /* The YM2149's channels sounding (2 MHz / 16 / period), the DMA sound,
+     * the LMC1992's volume
+     */
+    st_sound_status_t a;
+    st_get_sound_status(&a);
+    n = snprintf(text, sizeof(text), "YM2149");
+    int sounding = 0;
+    for (int c = 0; c < 3 && n < sizeof(text); c++) {
+        bool tone = !(a.ym[7] & (1 << c)), noise = !(a.ym[7] & (8 << c));
+        unsigned volume = a.ym[8 + c] & 0x1F;
+        if ((!tone && !noise) || volume == 0) {
+            continue;
+        }
+        unsigned period = a.ym[c * 2] | ((a.ym[c * 2 + 1] & 15) << 8);
+        char what[32], level[16];
+        if (tone) {
+            snprintf(what, sizeof(what), "%u Hz%s", 125000 / (period ? period : 1), noise ? " + noise" : "");
+        } else {
+            snprintf(what, sizeof(what), "noise");
+        }
+        snprintf(level, sizeof(level), volume & 0x10 ? "envelope" : "volume %u", volume);
+        n += snprintf(text + n, sizeof(text) - n, "%s %c %s, %s", sounding++ ? ";" : ":", 'A' + c, what, level);
+    }
+    if (!sounding && n < sizeof(text)) {
+        n += snprintf(text + n, sizeof(text) - n, " silent");
+    }
+    if ((a.dma_control & 1) && n < sizeof(text)) {
+        static const char *const rates[4] = { "6.3", "12.5", "25", "50" };
+        n += snprintf(text + n, sizeof(text) - n, "; DMA %s kHz %s%s", rates[a.dma_mode & 3],
+                      (a.dma_mode & 0x80) ? "mono" : "stereo", (a.dma_control & 2) ? ", looping" : "");
+    } else if (n < sizeof(text)) {
+        n += snprintf(text + n, sizeof(text) - n, "; DMA off");
+    }
+    if ((a.master_db || a.left_db || a.right_db) && n < sizeof(text)) {
+        n += snprintf(text + n, sizeof(text) - n, "; volume %d dB (L %d, R %d)", a.master_db, a.left_db,
+                      a.right_db);
+    }
+    if (a.mix != 1 && n < sizeof(text)) {
+        snprintf(text + n, sizeof(text) - n, a.mix == 2 ? "; YM off" : "; YM at -12 dB");
+    }
+    emu_json_row(j, "Sound", text);
+
+    /* What the 68000 takes (HBL 2, VBL 4, the MFP 6) and the MFP's
+     * enabled channels; the RS-232 ones as one
+     */
+    static const char *const channels[16] = {
+        "printer", NULL, NULL, "blitter", NULL, NULL, "keyboard/MIDI", "disk",
+        NULL, NULL, NULL, NULL, NULL, NULL, NULL, "mono/DMA sound",
+    };
+    static const int8_t channel_timer[16] = { -1, -1, -1, -1, 3, 2, -1, -1, 1, -1, -1, -1, -1, 0, -1, -1 };
+    st_mfp_status_t m;
+    st_get_mfp_status(&m);
+    unsigned ipl = (s.sr >> 8) & 7;
+    n = snprintf(text, sizeof(text), "Mask %u (%s); MFP:", ipl,
+                 ipl < 2 ? "HBL, VBL, MFP on" : ipl < 4 ? "VBL, MFP on" : ipl < 6 ? "MFP on" : "all off");
+    int listed = 0;
+    for (int ch = 0; ch < 16 && n < sizeof(text); ch++) {
+        if (!(m.enabled & (1u << ch))) {
+            continue;
+        }
+        char timer[48];
+        const char *name = channels[ch];
+        if (channel_timer[ch] >= 0) {
+            timer_text(timer, sizeof(timer), &m, channel_timer[ch]);
+            name = timer;
+        }
+        if (name) {
+            n += snprintf(text + n, sizeof(text) - n, "%s %s", listed++ ? "," : "", name);
+        }
+    }
+    if ((m.enabled & 0x5E06) && n < sizeof(text)) {
+        n += snprintf(text + n, sizeof(text) - n, "%s RS-232", listed++ ? "," : "");
+    }
+    if (!listed && n < sizeof(text)) {
+        snprintf(text + n, sizeof(text) - n, " none");
+    }
+    emu_json_row(j, "Interrupts", text);
+
+    emu_json_row(j, "Keyboard", "By position, in TOS's layout; Alt Alternate, F11/Page Down Undo, F12/Page Up Help, "
+                 "Home Clr/Home, Num Lock (, keypad = )");
+
+    /* The keyboard processor: the mouse and joysticks as TOS asked, its clock */
+    static const char *const mouse_modes[4] = { "relative", "absolute", "as cursor keys", "off" };
+    static const char *const joystick_modes[3] = { "as events", "when asked", "off" };
+    st_ikbd_status_t k;
+    st_get_ikbd_status(&k);
+    time_t when = (time_t)k.clock;
+    struct tm tm;
+    localtime_r(&when, &tm);
+    snprintf(text, sizeof(text), "Mouse %s%s; joysticks %s%s; clock %04d-%02d-%02d %02d:%02d:%02d",
+             mouse_modes[k.mouse_mode & 3],
+             (k.buttons & 3) == 3 ? ", both buttons down" : (k.buttons & 2) ? ", left button down" :
+             (k.buttons & 1) ? ", right button down" : "",
+             joystick_modes[k.joystick_mode < 3 ? k.joystick_mode : 2], k.paused ? "; output paused" : "",
+             tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+    emu_json_row(j, "IKBD", text);
+
+    n = snprintf(text, sizeof(text), "A:, B: WD1772 (.ST; .MSA read-only); ACSI 0, 1 (.IMG, .HD)");
+    if (s_cfg.hd_path != NULL) {
+        snprintf(text + n, sizeof(text) - n, "; %c: the SD card (GEMDOS)", st_hd_drive());
+    }
+    emu_json_row(j, "Disks", text);
+}
 
 static void status(emu_json_t *j, int section)
 {
     char text[160];
     if (section == EMU_STATUS_ROWS) {
-        uint16_t ram_kb = s_cfg.ram_size / 1024;
-        char ram[16];
-        snprintf(ram, sizeof(ram), ram_kb >= 1024 ? "%u MB" : "%u KB",
-                 ram_kb >= 1024 ? ram_kb / 1024 : ram_kb);
-        snprintf(text, sizeof(text), "TOS %x.%02x, %s", s_tos_version >> 8, s_tos_version & 0xFF, ram);
-        emu_json_row(j, "System", text);
-        snprintf(text, sizeof(text), "68000 at %.0f MHz", ST_MHZ(st_cpu_speed()));
-        emu_json_row(j, "CPU", text);
-        st_screen_mode_t mode;
-        st_get_screen_mode(&mode);
-        snprintf(text, sizeof(text), "%d × %d, %d colours, %d Hz", mode.width, mode.height,
-                 1 << mode.planes, mode.hz);
-        emu_json_row(j, "Screen", text);
-        uint32_t ram_free, ram_largest;
-        if (st_ram_free(&ram_free, &ram_largest)) {
-            int len = snprintf(text, sizeof(text), "%lu KB of %s", (unsigned long)(ram_free / 1024), ram);
-            if (ram_largest < ram_free) {
-                snprintf(text + len, sizeof(text) - len, " <span class=\"dim\">(largest block %lu KB)</span>",
-                         (unsigned long)(ram_largest / 1024));
-            }
-            emu_json_row_bar(j, "Free RAM", text, 100 - (int)((uint64_t)ram_free * 100 / s_cfg.ram_size));
-        }
+        status_rows(j);
         return;
     }
     st_floppy_status_t fs;

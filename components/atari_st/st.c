@@ -419,4 +419,7 @@ void st_get_status(st_status_t *status)
     status->vbclock = read_long(SV_VBCLOCK);
     status->bus_errors = st.bus_errors;
     status->halted = st.halted;
+    status->mmu_config = st.mmu_config;
+    status->rom_base = st.rom_base;
+    status->rom_size = st.rom_size;
 }

@@ -94,6 +94,8 @@ static inline uint32_t dma_due(dma_t *d, uint32_t samples)
 static struct {
     dma_t dma;
     uint16_t mw_data, mw_mask;
+    int8_t master_db, left_db, right_db;    /* the LMC1992 as set (for the status) */
+    uint8_t mix;
     uint64_t frame_base;                /* CPU cycles at the start of this frame */
     uint64_t now;                       /* output samples up to now */
     bool enabled;                       /* the render side consumes events */
@@ -191,7 +193,32 @@ static void microwire_send(void)
     }
     if (n >= 11) {
         push_event(EV_LMC, 0, bits & 0x7FF, 0);
+        /* The same settings as the render side takes them, for the status */
+        uint16_t command = bits & 0x7FF;
+        if ((command >> 9) == 2) {
+            int data = command & 0x3F;
+            switch ((command >> 6) & 7) {
+            case 0: emu.mix = data & 3; break;
+            case 3: emu.master_db = -2 * (40 - (data > 40 ? 40 : data)); break;
+            case 4: emu.right_db = -2 * (20 - (data > 20 ? 20 : data)); break;
+            case 5: emu.left_db = -2 * (20 - (data > 20 ? 20 : data)); break;
+            default: break;
+            }
+        }
     }
+}
+
+void st_get_sound_status(st_sound_status_t *status)
+{
+    psg_sound_registers(status->ym);
+    status->dma_control = emu.dma.control;
+    status->dma_mode = emu.dma.mode;
+    status->dma_start = emu.dma.start;
+    status->dma_end = emu.dma.end;
+    status->master_db = emu.master_db;
+    status->left_db = emu.left_db;
+    status->right_db = emu.right_db;
+    status->mix = emu.mix;
 }
 
 uint8_t audio_read(uint32_t a)
@@ -408,6 +435,7 @@ void audio_init(void)
     audio_event_t *queue = emu.queue;
     memset(&emu, 0, sizeof(emu));
     emu.enabled = enabled;
+    emu.mix = 1;
     if (enabled && queue == NULL) {
         queue = malloc(EVENT_QUEUE * sizeof(audio_event_t));
     }

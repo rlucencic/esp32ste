@@ -257,6 +257,20 @@ area reads "Drop disk images (.ST, .MSA) or .ZIP files here", and the
 setup screen's floppy page "Disk images (.ST, .MSA) from the SD card's
 "st" folder." (both reworded for the Mac's longer texts).
 
+The machine card (`status_rows()` in `main/main.c`, from the core's
+`st_get_status()`, `st_get_video_status()`, `st_get_sound_status()`,
+`st_get_mfp_status()`, `st_get_ikbd_status()`: plain copies, read on the web
+server's task) shows the STE now: System (the 68000's speed, RAM), ROM (TOS
+version, country, year, base), Memory (the MMU's banks, TOS's program
+area), Free RAM, Screen (mode, Hz, video base, STE scroll and line offset),
+Palette (swatches), Sound (YM2149 channels' pitch and volume, DMA sound,
+the LMC1992's volume), Interrupts (the 68000's mask, the MFP's enabled
+channels with the timers' rates), Keyboard (where the ST's keys are),
+IKBD (mouse and joystick modes, its clock), Disks. The whole
+`/api/status` reply has 4 KB (esp32emu's `STATUS_SIZE`): rows stay short
+(~1.4 KB at the low resolution desktop, ~1.9 KB with every field at its
+longest).
+
 ## Memory budget (measured)
 
 - PSRAM: 8 MB; code copied to PSRAM takes ~1.3 MB, leaving a 6,784 KB heap.

@@ -259,6 +259,15 @@ static time_t clock_now(void)
     return time(NULL) + ikbd.clock_offset;
 }
 
+void st_get_ikbd_status(st_ikbd_status_t *status)
+{
+    status->mouse_mode = ikbd.mouse_mode;
+    status->joystick_mode = ikbd.joy_mode;
+    status->paused = ikbd.paused;
+    status->buttons = ikbd.buttons;
+    status->clock = clock_now();
+}
+
 static void clock_set(int year, int month, int day, int hour, int minute, int second)
 {
     struct tm tm = {

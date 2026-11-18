@@ -159,6 +159,16 @@ void st_get_screen_mode(st_screen_mode_t *mode)
     }
 }
 
+void st_get_video_status(st_video_status_t *status)
+{
+    status->mode = vid.frame_mode;
+    status->hz = vid.hz;
+    status->base = vid.frame_base;
+    status->line_offset = vid.frame_line_offset;
+    status->hscroll = vid.hscroll;
+    memcpy(status->palette, vid.palette, sizeof(status->palette));
+}
+
 /* STE colour nibble: bit 3 is the least significant bit of a 4-bit level */
 static uint16_t ste_to_rgb565(uint16_t c)
 {
