@@ -102,15 +102,16 @@ all are built on the shared runtime
   mouse at hand (a Bluetooth mouse is the better way): drag a finger
   anywhere to move the pointer, tap to click where it points, tap and
   touch again to drag, hold still half a second for the right button
-- **Web page** at `http://atari-ste.local`: drop `.ST`, `.MSA` or `.ZIP` files
-  onto it (with a progress bar) to put them on the SD card, and watch the
-  machine, drives, board and Bluetooth devices live
+- **Web page** at `http://atari-ste.local`: drop floppy images, hard disk
+  images or ZIP archives onto it to put them on the SD card. The page shows
+  transfer progress and live status for the machine, drives, board and
+  Bluetooth devices.
 - **Sound** on the board's speaker: on the Tab5 its built-in one (on by
   default), on the MaTouch an optional speaker on its amplifier output
   (`menuconfig`)
 
 <p align="center">
-  <img src="docs/images/web.png" width="80%" alt="The web page: Atari, drives, board and Bluetooth status above the floppy disk list">
+  <img src="docs/images/web-disks.png" width="80%" alt="Atari STE web page with ACSI free space, disk uploads and a hard disk size selector">
   <br><sub>The web page (example data)</sub>
 </p>
 
@@ -181,8 +182,9 @@ own flash; WiFi networks are remembered by its ESP32-C6.
 | Use the mouse without one | The touch screen is a touchpad: drag a finger anywhere to move the pointer, tap to click, tap and touch again to drag, hold still for half a second for the right button |
 | Change TOS or RAM | On the setup screen; **Restart** applies it |
 | Change the CPU speed (Tab5) | On the setup screen, at once: 8 MHz for exact STE timing (games, demos), 16 MHz for GEM and applications |
-| Insert a floppy | Setup screen → **Floppy** → **Insert disk**, or **Insert into…** on the web page |
-| Make a blank floppy | Setup screen → **Floppy** → **New empty disk** |
+| Insert a disk image | Setup screen → **Disks** → **Insert** on the drive, or **Insert into…** on the web page |
+| Make a blank floppy | Setup screen → **Disks** → **New** on A: or B: |
+| Make a bootable hard disk | Setup screen → **Disks** → **New** on ACSI 0 or 1, or choose a hard disk size on the web page. Requires an [AHDI template](docs/hard-disks.md). |
 | Copy disk images from a computer | Open `http://atari-ste.local` and drop them onto the page (ZIP files are unpacked) |
 | …or from the command line | `curl -T game.st http://atari-ste.local/disks/` |
 | Use programs from the SD card | Copy them anywhere on the card; they're on drive C: |
@@ -193,7 +195,7 @@ Disk images live in the `st` folder on the SD card, the ST's own (until
 folder). The inserted disks are remembered across restarts.
 
 <p align="center">
-  <img src="docs/images/floppy.png" width="60%" alt="Floppy page: drives A: and B: with Insert disk, New empty disk and Eject">
+  <img src="docs/images/tab5-disks.png" width="60%" alt="Tab5 Disks screen with Insert, New and Eject controls for two floppy drives and two ACSI drives">
 </p>
 
 ## Configuration

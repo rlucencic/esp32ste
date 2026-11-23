@@ -448,9 +448,6 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
 - ACSI images over 2 GB are untried (32-bit `off_t` on the boards).
 - Some Musashi changes are not yet in `patches/`: listed in
   `../esp32emu/components/musashi/README.md`.
-- `docs/images/web.png` and `floppy.png` show the older wording of the drop
-  area and the floppy page (see Web): retake them when the ST is on the
-  board again (`../esp32emu/CLAUDE.md`, README screenshots).
 - README images: `setup.png` (the MaTouch's setup screen: two rows, no CPU
   choice there; checked identical to a capture on 2026-10-17; the old
   `setup-cpu.png` with a MaTouch CPU row is gone), `gembench.png` (8 MHz,
