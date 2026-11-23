@@ -202,7 +202,31 @@ static int atari_entry(const uint8_t *e)
     return !memcmp(e + 1, "XGM", 3) ? 2 : 0;
 }
 
-static int atari_partitions(disk_t *d, const uint8_t *root)
+static bool image_read(void *ctx, uint64_t offset, void *buf, uint32_t len)
+{
+    const disk_t *d = ctx;
+    uint64_t size = (uint64_t)d->sectors * SECTOR;
+    off_t at = (off_t)offset;
+    return offset <= size && len <= size - offset && at >= 0 && (uint64_t)at == offset &&
+           fseeko(d->file, at, SEEK_SET) == 0 && fread(buf, 1, len, d->file) == len;
+}
+
+static void add_atari_space(disk_t *d, const uint8_t *entry, uint32_t base, diskspace_t *sum)
+{
+    if (sum == NULL) {
+        return;
+    }
+    uint32_t start = be32(entry + 4);
+    diskspace_disk_t disk = { image_read, d, (uint64_t)d->sectors * SECTOR };
+    diskspace_t part;
+    if (start && ahdi_partition_space(&disk, ((uint64_t)base + start) * SECTOR,
+                                      (uint64_t)be32(entry + 8) * SECTOR, &part)) {
+        sum->free += part.free;
+        sum->size += part.size;
+    }
+}
+
+static int atari_partitions(disk_t *d, const uint8_t *root, diskspace_t *space)
 {
     int n = 0;
     uint8_t ext[SECTOR];
@@ -211,19 +235,33 @@ static int atari_partitions(disk_t *d, const uint8_t *root)
         int kind = atari_entry(e);
         if (kind == 1) {
             n++;
+            add_atari_space(d, e, 0, space);
         } else if (kind == 2) {
             /* An extended chain: each link a partition and the next link
              * (relative to the first)
              */
             uint32_t first = be32(e + 4), link = first;
-            for (int k = 0; k < 64 && read_sector(d, link, ext); k++) {
+            uint32_t visited[64];
+            for (int k = 0; k < 64 && link > 0 && link < d->sectors && read_sector(d, link, ext); k++) {
+                visited[k] = link;
                 if (atari_entry(ext + 0x1C6) == 1) {
                     n++;
+                    add_atari_space(d, ext + 0x1C6, link, space);
                 }
                 if (atari_entry(ext + 0x1C6 + 12) != 2) {
                     break;
                 }
-                link = first + be32(ext + 0x1C6 + 12 + 4);
+                uint64_t next = (uint64_t)first + be32(ext + 0x1C6 + 12 + 4);
+                if (next >= d->sectors) {
+                    break;
+                }
+                link = next;
+                for (int j = 0; j <= k; j++) {
+                    if (visited[j] == link) {
+                        link = 0;
+                        break;
+                    }
+                }
             }
         }
     }
@@ -231,6 +269,7 @@ static int atari_partitions(disk_t *d, const uint8_t *root)
     for (int i = 0; n > 0 && i < 8; i++) {
         if (atari_entry(root + 0x156 + 12 * i) == 1) {
             n++;
+            add_atari_space(d, root + 0x156 + 12 * i, 0, space);
         }
     }
     return n;
@@ -288,10 +327,35 @@ int acsi_boot_partitions(void)
             sum += (root[k] << 8) | root[k + 1];
         }
         boots |= sum == 0x1234;
-        int atari = atari_partitions(d, root);
+        int atari = atari_partitions(d, root, NULL);
         n += atari > 0 ? atari : dos_partitions(d, root);
     }
     return boots ? n : -1;
+}
+
+bool st_acsi_space(int device, uint64_t *free_bytes, uint64_t *size)
+{
+    if (st_acsi_path(device) == NULL) {
+        return false;
+    }
+    disk_t *d = &disks[device];
+    uint8_t root[SECTOR];
+    diskspace_t space = { 0 };
+    if (!read_sector(d, 0, root)) {
+        return false;
+    }
+    if (atari_partitions(d, root, &space) == 0) {
+        diskspace_disk_t disk = { image_read, d, (uint64_t)d->sectors * SECTOR };
+        if (!diskspace_fat_disk(&disk, &space)) {
+            return false;
+        }
+    }
+    if (space.size == 0 || space.size > (uint64_t)d->sectors * SECTOR) {
+        return false;
+    }
+    *free_bytes = space.free;
+    *size = space.size;
+    return true;
 }
 
 /* ---- the bus ------------------------------------------------------------ */

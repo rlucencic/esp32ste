@@ -435,13 +435,17 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
   all sizes under TOS 1.62 and 2.06. The Tab5 and MaTouch both made and
   booted generated images with the second ACSI disk on D: and the SD
   folder on E:. Format and measurements are in `docs/hard-disks.md`.
+- **ACSI free space** (2026-11-23): the web drive rows show the totals
+  for readable FAT partitions. Tested on Atari primary, ICD and XGM
+  entries, DOS-style images and all three generated sizes. The scan
+  uses the second FAT for Atari volumes with two copies and reruns
+  between frames when writes settle.
 
 ## Open items
 
 - `.STX` (Pasti) images are not supported; `.MSA` is read-only.
 - No FPU, no MIDI, no Mega STE features.
-- Free space inside ACSI images is missing from the web page. Images over
-  2 GB are untried (32-bit `off_t` on the boards).
+- ACSI images over 2 GB are untried (32-bit `off_t` on the boards).
 - Some Musashi changes are not yet in `patches/`: listed in
   `../esp32emu/components/musashi/README.md`.
 - `docs/images/web.png` and `floppy.png` show the older wording of the drop

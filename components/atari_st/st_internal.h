@@ -5,7 +5,10 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "diskspace.h"
 #include "st.h"
+
+bool ahdi_partition_space(const diskspace_disk_t *disk, uint64_t base, uint64_t bytes, diskspace_t *out);
 
 #ifdef ESP_PLATFORM
 #include "esp_attr.h"

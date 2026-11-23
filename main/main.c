@@ -113,49 +113,59 @@ bool st_host_disk_free(const char *path, uint64_t *total, uint64_t *free_bytes)
 
 /* ---- Free space, for the web page ----
  *
- * A floppy's FAT is counted where its image is safe to read: at insert (the
- * emulation is paused then) and on the emulation task a second after the
- * drive's last write (each one goes straight through to the card). C: is
- * the SD card's, asked in every_second().
+ * Count an image at insert while emulation is paused, and between frames
+ * once its write count has settled. The SD card is queried separately.
  */
+enum { FLOPPIES = 2, DRIVES = FLOPPIES + ST_ACSI_DEVICES, SPACE_SD = DRIVES };
+
 typedef struct {
-    volatile bool known;
-    volatile uint64_t free, size;
+    uint64_t free, size;
     uint32_t writes;                /* the drive's write count when counted */
     bool waiting;                   /* written since: once the writes stop */
 } space_t;
 
-static space_t s_space[3];          /* A:, B:, C: */
+static space_t s_space[DRIVES + 1];     /* A:, B:, ACSI 0, ACSI 1, SD card */
+static portMUX_TYPE s_space_lock = portMUX_INITIALIZER_UNLOCKED;
 
-static void space_set(int d, bool known, uint64_t free_bytes, uint64_t size)
+static void space_set(int d, uint64_t free_bytes, uint64_t size)
 {
-    s_space[d].known = false;
+    portENTER_CRITICAL(&s_space_lock);
     s_space[d].free = free_bytes;
     s_space[d].size = size;
-    s_space[d].known = known;
+    portEXIT_CRITICAL(&s_space_lock);
 }
 
 /* The figures for the web page: the size, 0 if not known */
 static uint64_t space_get(int d, uint64_t *free_bytes)
 {
+    portENTER_CRITICAL(&s_space_lock);
     *free_bytes = s_space[d].free;
     uint64_t size = s_space[d].size;
-    return s_space[d].known ? size : 0;
+    portEXIT_CRITICAL(&s_space_lock);
+    return size;
 }
 
-static void floppy_count(int d)
+static void image_space_count(int d)
 {
-    st_floppy_status_t fs;
-    st_floppy_status(&fs);
-    s_space[d].writes = fs.writes[d];
     s_space[d].waiting = false;
     uint64_t f = 0, size = 0;
-    bool known = st_floppy_space(d, &f, &size);
-    space_set(d, known, f, size);
+    bool known = d < FLOPPIES ? st_floppy_space(d, &f, &size) :
+                                st_acsi_space(d - FLOPPIES, &f, &size);
+    space_set(d, known ? f : 0, known ? size : 0);
+}
+
+static void disk_write_counts(uint32_t writes[DRIVES])
+{
+    st_floppy_status_t fs;
+    st_acsi_status_t as;
+    st_floppy_status(&fs);
+    st_acsi_status(&as);
+    memcpy(writes, fs.writes, sizeof(fs.writes));
+    memcpy(writes + FLOPPIES, as.writes, sizeof(as.writes));
 }
 
 /* On the emulation task, between frames */
-static void floppy_space_check(void)
+static void disk_space_check(void)
 {
     static int64_t last;
     int64_t now = esp_timer_get_time();
@@ -163,29 +173,16 @@ static void floppy_space_check(void)
         return;
     }
     last = now;
-    st_floppy_status_t fs;
-    st_floppy_status(&fs);
-    for (int d = 0; d < 2; d++) {
-        if (fs.writes[d] != s_space[d].writes) {
-            s_space[d].writes = fs.writes[d];
+    uint32_t writes[DRIVES];
+    disk_write_counts(writes);
+    for (int d = 0; d < DRIVES; d++) {
+        if (writes[d] != s_space[d].writes) {
+            s_space[d].writes = writes[d];
             s_space[d].waiting = true;      /* (the next second, if it stays so) */
         } else if (s_space[d].waiting) {
-            floppy_count(d);
+            image_space_count(d);
         }
     }
-}
-
-static bool floppy_insert(int drive, const char *path)
-{
-    bool ok = st_floppy_insert(drive, path);
-    floppy_count(drive);
-    return ok;
-}
-
-static void floppy_eject(int drive)
-{
-    st_floppy_eject(drive);
-    space_set(drive, false, 0, 0);
 }
 
 /* GEM (re)started in a resolution: remembered for the next boot. Called
@@ -207,7 +204,7 @@ static void every_second(void)
     }
     uint64_t total, free_bytes;
     if (s_cfg.hd_path != NULL && sdcard_space(&total, &free_bytes)) {
-        space_set(2, true, free_bytes, total);
+        space_set(SPACE_SD, free_bytes, total);
     }
 }
 
@@ -222,7 +219,7 @@ static void every_second(void)
  */
 static void run_frame(void)
 {
-    floppy_space_check();
+    disk_space_check();
     st_set_cpu_speed(settings.cpu == SETTINGS_CPU_16MHZ ? 2 * ST_CPU_SPEED_8MHZ : ST_CPU_SPEED_8MHZ);
     st_run_frame();
 }
@@ -442,9 +439,6 @@ static const emu_choice_t choices[] = {
 
 /* ---- Disks: floppies in A: and B:, hard disk images on ACSI 0 and 1 ---- */
 
-#define FLOPPIES        2
-#define DRIVES          (FLOPPIES + ST_ACSI_DEVICES)
-
 static const char *const extensions[] = { ".st", ".msa", ".img", ".hd", NULL };
 static const char *const drive_names[DRIVES] = { "A:", "B:", "ACSI 0", "ACSI 1" };
 #define FLOPPY_BYTES 737280u
@@ -497,10 +491,13 @@ static const char *disk_extension(uint32_t bytes)
 
 static bool disk_insert(int drive, const char *path)
 {
-    if (drive >= FLOPPIES) {
-        return st_acsi_insert(drive - FLOPPIES, path);
-    }
-    return floppy_insert(drive, path);
+    bool ok = drive < FLOPPIES ? st_floppy_insert(drive, path) :
+                                st_acsi_insert(drive - FLOPPIES, path);
+    uint32_t writes[DRIVES];
+    disk_write_counts(writes);
+    s_space[drive].writes = writes[drive];
+    image_space_count(drive);
+    return ok;
 }
 
 static void disk_eject(int drive)
@@ -508,8 +505,10 @@ static void disk_eject(int drive)
     if (drive >= FLOPPIES) {
         st_acsi_eject(drive - FLOPPIES);
     } else {
-        floppy_eject(drive);
+        st_floppy_eject(drive);
     }
+    s_space[drive].waiting = false;
+    space_set(drive, 0, 0);
 }
 
 static const char *disk_path(int drive)
@@ -816,8 +815,9 @@ static void status(emu_json_t *j, int section)
         uint64_t bytes = st_acsi_size(i);
         snprintf(text, sizeof(text), "%llu %s hard disk", (unsigned long long)(bytes >> (bytes >= 1 << 20 ? 20 : 10)),
                  bytes >= 1 << 20 ? "MB" : "KB");
+        uint64_t free_bytes, size = space_get(FLOPPIES + i, &free_bytes);
         emu_json_drive_space(j, drive_names[FLOPPIES + i], name, st_acsi_write_protected(i), as.light == i,
-                             as.reads[i], as.writes[i], text, 0, 0);
+                             as.reads[i], as.writes[i], text, free_bytes, size);
     }
     if (s_cfg.hd_path != NULL) {
         char last[100], letter[3] = { st_hd_drive(), ':', 0 };
@@ -825,7 +825,7 @@ static void status(emu_json_t *j, int section)
         if (verb) {
             snprintf(text, sizeof(text), "last %s: %s", verb, last);
         }
-        uint64_t free_bytes, size = space_get(2, &free_bytes);
+        uint64_t free_bytes, size = space_get(SPACE_SD, &free_bytes);
         emu_json_drive_space(j, letter, "SD card", false, false, 0, 0, verb ? text : "no files used yet",
                              free_bytes, size);
     }

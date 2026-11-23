@@ -27,6 +27,21 @@ from the dedicated flash data partition or from the SD card. Without a
 valid template, the web page explains how to provide one and offers only
 floppies. [Atari hard disk layout reference](https://info-coach.fr/atari/documents/_mydoc/Atari_HD_File_Sytem_Reference_Guide_v1.1b.pdf)
 
+## Free space in the web page
+
+Each mounted ACSI drive shows the combined capacity and free space of
+its readable FAT partitions. The scan handles Atari GEM and BGM
+partitions, including ICD and XGM entries, and DOS-style FAT disks. It
+counts the allocation table on insert and refreshes it once guest
+writes settle. For Atari partitions with two FAT copies it reads the
+second, as GEMDOS does. [EmuTOS BIOS implementation](https://github.com/emutos/emutos/blob/master/bios/blkdev.c#L656-L667)
+
+The host counted the same 256 KiB change reported by TOS 2.06 after a
+guest write on each of the three generated sizes. In those images TOS
+reported two fewer free clusters than the raw count.
+The MaTouch and Tab5 each reported the expected 257 KiB drop in the web
+status after TOS wrote a 256 KiB test file and its result marker.
+
 ## Drivers tried (2026-11-16)
 
 Both work with the ACSI emulation. Measured in the host build, in

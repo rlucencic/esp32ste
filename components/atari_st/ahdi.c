@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include "st.h"
+#include "st_internal.h"
 #ifdef ESP_PLATFORM
 #include "esp_heap_caps.h"
 #include "esp_partition.h"
@@ -100,7 +100,7 @@ static bool write_at(FILE *file, uint32_t offset, const void *buf, size_t len)
     return fseeko(file, offset, SEEK_SET) == 0 && fwrite(buf, 1, len, file) == len;
 }
 
-static bool fat_layout(const uint8_t *boot, uint32_t base, uint32_t bytes, fat16_t *fat)
+static bool fat_layout(const uint8_t *boot, uint32_t base, uint64_t bytes, fat16_t *fat)
 {
     uint32_t sector = le16(boot + 11), spc = boot[13], reserved = le16(boot + 14);
     uint32_t copies = boot[16], entries = le16(boot + 17);
@@ -122,6 +122,37 @@ static bool fat_layout(const uint8_t *boot, uint32_t base, uint32_t bytes, fat16
     }
     *fat = (fat16_t){ sector, spc * sector, fat_sectors, entries, clusters,
                       base + reserved * sector, base + root * sector, base + data * sector };
+    return true;
+}
+
+bool ahdi_partition_space(const diskspace_disk_t *disk, uint64_t base, uint64_t bytes, diskspace_t *out)
+{
+    uint8_t buf[SECTOR];
+    fat16_t fat;
+    if (bytes < SECTOR || base > disk->size || bytes > disk->size - base ||
+        !disk->read(disk->ctx, base, buf, sizeof(buf)) || !fat_layout(buf, 0, bytes, &fat)) {
+        return false;
+    }
+
+    /* GEMDOS reads the second FAT when there are two. Hard disks use FAT16
+     * even when their cluster count would indicate FAT12 in MS-DOS. */
+    uint64_t offset = base + fat.root - fat.fat_sectors * fat.sector_bytes;
+    uint32_t free_clusters = 0;
+    uint32_t skip = 2;
+    for (uint32_t left = fat.clusters + skip; left > 0;) {
+        uint32_t entries = left < SECTOR / 2 ? left : SECTOR / 2;
+        if (!disk->read(disk->ctx, offset, buf, entries * 2)) {
+            return false;
+        }
+        for (uint32_t i = skip; i < entries; i++) {
+            free_clusters += le16(buf + i * 2) == 0;
+        }
+        skip = 0;
+        offset += entries * 2;
+        left -= entries;
+    }
+    out->free = (uint64_t)free_clusters * fat.cluster_bytes;
+    out->size = (uint64_t)fat.clusters * fat.cluster_bytes;
     return true;
 }
 

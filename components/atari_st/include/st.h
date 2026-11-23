@@ -249,6 +249,9 @@ void st_acsi_eject(int device);
 const char *st_acsi_path(int device);      /* NULL when empty */
 bool st_acsi_write_protected(int device);
 uint64_t st_acsi_size(int device);          /* bytes, 0 when empty */
+/* Count the supported FAT partitions. Call while the emulation is paused
+ * or from the emulation task between frames. */
+bool st_acsi_space(int device, uint64_t *free_bytes, uint64_t *size);
 
 /* Activity, safe to read from another task (values may be a frame old) */
 typedef struct {

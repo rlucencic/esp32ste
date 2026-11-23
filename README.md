@@ -82,6 +82,8 @@ all are built on the shared runtime
   boots from it and the driver's partitions take C: onward; the SD card then
   moves to the next free letter. Images are looked for at a reset; the boot
   image goes on ACSI 0 (TOS 1.62 waits 10 s for a drive 0 that isn't there)
+- The web page shows used and free space for the FAT partitions it can
+  read on each mounted ACSI disk.
 - **New disks** from the setup screen and web page. Floppies are 720 KiB
   `.ST` images. To create bootable ACSI disks, flash a local copy of
   Atari's AHDI 6.061 from `roms/ahdi.img`, or upload a bootable `AHDI.IMG`
