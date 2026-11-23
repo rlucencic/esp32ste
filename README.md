@@ -82,8 +82,12 @@ all are built on the shared runtime
   boots from it and the driver's partitions take C: onward; the SD card then
   moves to the next free letter. Images are looked for at a reset; the boot
   image goes on ACSI 0 (TOS 1.62 waits 10 s for a drive 0 that isn't there)
-- **New blank disks** from the setup screen: `EMPTY0001.ST`, `EMPTY0002.ST`, …
-  (floppies; a blank hard disk would need partitioning and a driver)
+- **New disks** from the setup screen and web page. Floppies are 720 KiB
+  `.ST` images. To create bootable ACSI disks, flash a local copy of
+  Atari's AHDI 6.061 from `roms/ahdi.img`, or upload a bootable `AHDI.IMG`
+  to the SD card and reload the web page. Choose 32, 128 or 256 MiB
+  in the web page, or use **New** on an ACSI drive in setup for 32 MiB.
+  [Hard disk setup and template instructions](docs/hard-disks.md)
 - A disk in A: at power-on boots, as games expect
 
 **Around it**

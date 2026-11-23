@@ -259,6 +259,15 @@ typedef struct {
 
 void st_acsi_status(st_acsi_status_t *status);
 
+/* Bootable FAT16 disks. On ESP, use the AHDI flash partition first and
+ * fall back to the supplied image path. The host uses the image path. */
+bool st_ahdi_template(const char *path);
+bool st_ahdi_create(const char *path, const char *source_path, uint32_t bytes);
+#ifndef ESP_PLATFORM
+/* Copy the AHDI boot code and driver into a 512 KiB flash template. */
+bool st_ahdi_prepare_template(const char *path, const char *source_path);
+#endif
+
 /* The host folder's drive letter: 'C', or after the partitions of a hard
  * disk image TOS boots (known once the ST has started)
  */

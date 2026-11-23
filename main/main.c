@@ -447,7 +447,16 @@ static const emu_choice_t choices[] = {
 
 static const char *const extensions[] = { ".st", ".msa", ".img", ".hd", NULL };
 static const char *const drive_names[DRIVES] = { "A:", "B:", "ACSI 0", "ACSI 1" };
-static const disks_size_t sizes[] = { { 737280, "720 KB" } };
+#define FLOPPY_BYTES 737280u
+#define MIB (1024u * 1024u)
+#define AHDI_TEMPLATE "AHDI.IMG"
+
+static const disks_size_t sizes[] = {
+    { FLOPPY_BYTES, "720 KiB floppy" },
+    { 32 * MIB, "32 MiB ACSI hard disk" },
+    { 128 * MIB, "128 MiB ACSI hard disk" },
+    { 256 * MIB, "256 MiB ACSI hard disk" },
+};
 
 static bool hard_disk_name(const char *name)
 {
@@ -460,12 +469,30 @@ static bool disk_accepts(int drive, const char *name)
     return (drive >= FLOPPIES) == hard_disk_name(name);
 }
 
-/* Blank disks are floppies (an empty hard disk needs partitioning and a
- * driver first)
- */
+static const char *disk_create_unavailable(uint32_t bytes)
+{
+    if (bytes == FLOPPY_BYTES) {
+        return NULL;
+    }
+    char source[200];
+    disks_path(source, sizeof(source), AHDI_TEMPLATE);
+    return st_ahdi_template(source) ? NULL :
+           "To create ACSI hard disks, flash roms/ahdi.img or upload a bootable AHDI.IMG, then reload this page.";
+}
+
 static bool disk_takes_blank(int drive)
 {
-    return drive < FLOPPIES;
+    return drive < FLOPPIES || disk_create_unavailable(32 * MIB) == NULL;
+}
+
+static uint32_t disk_default_size(int drive)
+{
+    return drive < FLOPPIES ? FLOPPY_BYTES : 32 * MIB;
+}
+
+static const char *disk_extension(uint32_t bytes)
+{
+    return bytes == FLOPPY_BYTES ? ".ST" : ".IMG";
 }
 
 static bool disk_insert(int drive, const char *path)
@@ -495,9 +522,14 @@ static bool disk_write_protected(int drive)
     return drive >= FLOPPIES ? st_acsi_write_protected(drive - FLOPPIES) : st_floppy_write_protected(drive);
 }
 
-static bool floppy_create(const char *path, uint32_t bytes)
+static bool disk_create(const char *path, uint32_t bytes)
 {
-    return st_floppy_create(path);
+    if (bytes == FLOPPY_BYTES) {
+        return st_floppy_create(path);
+    }
+    char source[200];
+    disks_path(source, sizeof(source), AHDI_TEMPLATE);
+    return st_ahdi_create(path, source, bytes);
 }
 
 /* An .MSA image's unpacked copy goes with it */
@@ -520,16 +552,19 @@ static const disks_config_t disks = {
     .new_prefix = "EMPTY",
     .new_extension = ".ST",
     .sizes = sizes,
-    .size_count = 1,
+    .size_count = sizeof(sizes) / sizeof(sizes[0]),
     .max_upload = 256 * 1024 * 1024,
     .insert = disk_insert,
     .eject = disk_eject,
     .path = disk_path,
     .write_protected = disk_write_protected,
-    .create = floppy_create,
+    .create = disk_create,
     .removed = floppy_removed,
     .accepts = disk_accepts,
     .takes_blank = disk_takes_blank,
+    .default_size = disk_default_size,
+    .extension_for = disk_extension,
+    .create_unavailable = disk_create_unavailable,
 };
 
 /* ---- Status ----

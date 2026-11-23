@@ -368,6 +368,18 @@ static void drain_audio(void)
 
 int main(int argc, char **argv)
 {
+    if (argc > 1 && strcmp(argv[1], "--prepare-ahdi") == 0) {
+        if (argc != 4) {
+            fprintf(stderr, "usage: %s --prepare-ahdi <bootable-source.img> <output.img>\n", argv[0]);
+            return 2;
+        }
+        if (!st_ahdi_prepare_template(argv[3], argv[2])) {
+            fprintf(stderr, "Could not create %s from %s. Check the source image and that the output does not exist.\n",
+                    argv[3], argv[2]);
+            return 1;
+        }
+        return 0;
+    }
     if (argc < 2) {
         fprintf(stderr, "usage: %s <tos.img> [frames] [out.ppm] [ram_kb] [mono]\n", argv[0]);
         return 1;

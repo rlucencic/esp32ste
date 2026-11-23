@@ -2,29 +2,30 @@
 
 The STE has two ACSI hard disks, `ACSI 0` and `ACSI 1`, each an image file
 (`.IMG`, `.HD`) in the SD card's `st` folder (`components/atari_st/acsi.c`).
-The web page uploads and inserts them. The "New" button makes only 720 KB
-floppies, though. This page says why, what works today, and how new hard
-disks could come with a driver already installed (TODO.md, item 1).
+The web page uploads, inserts and creates them. Each new hard disk has one
+FAT16 partition with an installed AHDI driver.
 
-## Why "New" makes no hard disks
+## Create a bootable hard disk
 
-A new hard disk image needs two things before TOS can use it:
+1. Prepare and flash a local copy of Atari's AHDI 6.061 as
+   [`roms/ahdi.img`](../roms/README.md#atari-ahdi-6061). If the board
+   has no valid flash template, it uses a bootable `AHDI.IMG` in the
+   SD card's `st` folder.
+2. Open or reload the web page. Choose 32, 128 or 256 MiB under **New blank disk**
+   and click **Make**. The new file appears as `EMPTYnnnn.IMG`. The
+   setup screen's **New** button on ACSI 0 or 1 makes a 32 MiB image and
+   mounts it in that drive.
+3. Insert the image in an ACSI drive and reset the emulator. Use ACSI 0
+   for the boot disk. When ACSI 0 boots, a second image on ACSI 1 takes
+   the next hard disk letter.
 
-1. **Partitions and filesystems**: an Atari root sector with a partition
-   table, and an empty FAT16 filesystem in each partition. The emulator
-   could write these itself.
-2. **A driver**: TOS has none for hard disks. At power-on, TOS runs the
-   code in the first root sector whose words add up to `$1234`: the
-   driver's small loader, which loads the driver from the disk. The driver
-   then mounts the partitions as C:, D:, ...
-
-The drivers and their loaders are other people's software. AHDI and the
-loader that its HINSTALL writes belong to Atari; HDDRIVER belongs to
-Uwe Seimet. This project is public and MIT-licensed, so the firmware can't
-carry them (for the same reason the TOS images aren't in the repo). Until
-2026-11-16 the only driver tried was HDDRIVER's demo, which can't format
-or partition and writes slowly on purpose, so `main.c` offers blank disks
-for the floppy drives only (`disk_takes_blank()`).
+The formatter copies the loader from both the disk root sector and the
+partition boot sector. It writes a new partition table and FAT16 BIOS
+parameter block, recalculates both boot checksums, and copies
+`SHDRIVER.SYS` by following the source FAT chain. It reads the template
+from the dedicated flash data partition or from the SD card. Without a
+valid template, the web page explains how to provide one and offers only
+floppies. [Atari hard disk layout reference](https://info-coach.fr/atari/documents/_mydoc/Atari_HD_File_Sytem_Reference_Guide_v1.1b.pdf)
 
 ## Drivers tried (2026-11-16)
 
@@ -94,50 +95,35 @@ Scripting it in the host build: the drive buttons in HINSTALL's dialog are
 radio buttons, and the AES shows a click only ~20 frames later (it waits
 for a possible double click); a click on OK within that time is lost.
 
-## New hard disks with a driver: two ways
+## Validation
 
-### A. Copy the driver from a bootable disk on the card (recommended)
+The 32, 128 and 256 MiB images booted from ACSI 0 under TOS 1.62 and
+2.06. In each case a guest program wrote and read back 256 KiB, and the
+change in TOS's free-space reading matched the file size. The host
+directory followed the ACSI partition as D:. A 128 MiB disk on ACSI 1
+also passed as D: with an ACSI 0 boot disk and the host directory at E:.
+With TOS 2.06 and an empty ACSI 0, booting from ACSI 1 halted with both
+the original AHDI template and the generated image. The formatter also
+copied a fragmented template driver byte-for-byte and removed the
+incomplete output when given a cyclic FAT chain.
 
-"New" for ACSI 0/1 formats the image itself (step 1 above, in C) and then
-copies the driver from a bootable AHDI disk the user already has in the
-`st` folder (like the one made above):
+The 512 KiB flash template itself booted under TOS 1.62 and 2.06.
+All three disk sizes made from it matched the output from the
+original 16 MiB Atari AHDI template byte-for-byte.
 
-- the root sector's loader (bytes `$000`-`$1BF`), with the checksum word
-  made again so the words add up to `$1234`; partition 0 flagged `$81`;
-- `SHDRIVER.SYS` from that disk's boot partition into the new one's.
+With no template available, the disk creation API offered only floppies.
+With the template in flash and no SD copy, both boards offered all three
+ACSI sizes and produced a 32 MiB image that matched the host byte-for-byte.
+The Tab5 setup screen also created and mounted a 32 MiB disk on ACSI 1
+with the flash template alone.
 
-The loader reads the partition table when it runs, so it works with any
-partitions written the same way; HINSTALL itself writes the same bytes
-every time. No Atari code goes into the repo: the user uploads one
-bootable AHDI disk once. Without one on the card, the page says so and
-offers floppies only.
+In the SD-template tests, the Tab5 made a 32 MiB image in 12 seconds over
+the web and the result matched the host output byte-for-byte. The setup
+screen **New** button created and mounted a second 32 MiB image on ACSI 1.
+Both TOS versions booted with two ACSI partitions and the SD folder at E:.
 
-The same could take HDDRIVER's loader and `HDDRIVER.SYS` from a full
-version's disk (untried).
-
-### B. A loader of our own
-
-A root sector loader written for this project (MIT; about 400 bytes of
-68000 code: read sectors through the DMA chip, find the driver in the
-boot partition's FAT16 root directory, load and relocate it, run it),
-with `AHDI.PRG` taken from the SD card. It needs no ready-made disk, and
-it boots on a real ST too, but it's clearly more work: written and
-assembled by hand (no 68000 assembler is installed), and tested against
-what TOS's DMA boot passes to it.
-
-### Either way
-
-- **Where**: `main.c` (`disks_config_t`: hard disk sizes in `sizes`,
-  `takes_blank()` true for ACSI, `default_size()`, `extension_for()` giving
-  `.IMG`, `create()` choosing floppy or hard disk by size) and a formatter
-  in `components/atari_st` (beside `acsi.c`), so the host build can test
-  it.
-- **Sizes**: what TOS allows per partition, from the Atari Wiki's AHDI
-  page: 256 MB with TOS 1.x, 512 MB with TOS 2.0x. The images live on the
-  boards' SD cards, which have room; files over 2 GB are untried there
-  (32-bit `off_t`).
-- **Checks**: in the host build, a new disk of each size boots TOS 1.62
-  and 2.06, AHDI mounts every partition, the folder comes after them, the
-  write test passes and the free space is right (`st_floppy_space()`'s
-  counterpart for hard disks, if the page shows it); then on the Tab5 and
-  the MaTouch from the web page.
+The MaTouch made a 128 MiB image in 80 seconds over the web and created
+and mounted a 32 MiB image on ACSI 1 in 21 seconds from setup. TOS 2.06
+booted from the 128 MiB disk on ACSI 0 and mapped the SD folder to E:.
+The formatter writes from internal DMA-capable memory to avoid the
+ESP32-S3's sector-at-a-time fallback for PSRAM buffers.

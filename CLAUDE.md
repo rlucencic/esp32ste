@@ -40,8 +40,8 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
   idf.py build && idf.py -p /dev/cu.usbmodem1101 app-flash'
 ```
 
-- `app-flash` writes only the app. `idf.py flash` also writes the TOS images
-  from `roms/` (not in the repo) into partitions `tos162` and `tos206`.
+- `app-flash` writes only the app. `idf.py flash` also writes the local
+  `roms/` images into partitions `tos162`, `tos206` and `ahdi` when present.
 - **The board is shared with the Mac** (`../esp32mac`): its ROM partitions
   overlap `tos162`/`tos206`, so after the Mac has been on the board, go
   back with a full `idf.py flash` here (app-flash alone finds no TOS). NVS
@@ -132,8 +132,8 @@ bash -c '. $IDF_PATH/export.sh >/dev/null 2>&1; \
 | `../esp32emu/components/emu/` | Board runtime: tasks, LCD, touch, SD, WiFi, BLE, setup screen, web page, console |
 | `../esp32emu/components/musashi/` | 68000 core (Musashi, evansm7 fork); see its README |
 | `../esp32emu/tools/emu_console.py` | Console client |
-| `roms/` | `tos162.img`, `tos206.img` (copyrighted, not distributed) |
-| `partitions.csv` | nvs, phy, factory 8 MB, tos162 + tos206 (256 KB each, type 0x40), storage |
+| `roms/` | `tos162.img`, `tos206.img`, optional `ahdi.img` (local copyrighted images) |
+| `partitions.csv` | nvs, phy, factory 8 MB, tos162 + tos206 (256 KB each, type 0x40), storage, ahdi (512 KiB, type 0x41) |
 
 ## Architecture
 
@@ -428,14 +428,20 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
   uploaded and put in ACSI 0 through the web API, `POST /api/reset`: TOS
   1.62 booted through AHDI (94 reads), C: showed SHDRIVER.SYS, Save Desktop
   wrote C:\DESKTOP.INF (6 writes), the SD card D:.
+- **New bootable ACSI disks** (2026-11-23): the web page offers 32, 128 and
+  256 MiB with Atari's AHDI 6.061 from the local `roms/ahdi.img` flash
+  partition or a bootable `st/AHDI.IMG` on the SD card. Setup makes 32 MiB on the
+  selected ACSI drive. The host tested boot and a 256 KiB write/read on
+  all sizes under TOS 1.62 and 2.06. The Tab5 and MaTouch both made and
+  booted generated images with the second ACSI disk on D: and the SD
+  folder on E:. Format and measurements are in `docs/hard-disks.md`.
 
 ## Open items
 
 - `.STX` (Pasti) images are not supported; `.MSA` is read-only.
 - No FPU, no MIDI, no Mega STE features.
-- ACSI: no blank hard disk images (they'd need partitioning and a driver
-  first: `TODO.md` 1, `docs/hard-disks.md`); no free space for them on the web page; images over 2 GB untried
-  (32-bit `off_t` on the boards).
+- Free space inside ACSI images is missing from the web page. Images over
+  2 GB are untried (32-bit `off_t` on the boards).
 - Some Musashi changes are not yet in `patches/`: listed in
   `../esp32emu/components/musashi/README.md`.
 - `docs/images/web.png` and `floppy.png` show the older wording of the drop
