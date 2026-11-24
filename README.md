@@ -314,6 +314,10 @@ and the lessons learned along the way.
 - 16 MHz (Tab5) changes a program's timing as an accelerator would:
   games and demos that count on an 8 MHz 68000 can misbehave.
 
+## Roadmap
+
+See [TODO.md](TODO.md) for proposed work and how to verify it.
+
 ## Credits
 
 - [Musashi](https://github.com/kstenerud/Musashi) by Karl Stenerud (MIT
