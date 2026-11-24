@@ -240,6 +240,91 @@ void tos_patch_hd(uint16_t version, bool no_scan, bool no_wait)
     }
 }
 
+/* Locate GEMDOS's tick handler by its code. The RAM addresses and the
+ * handler's ROM offset can differ between language versions. */
+static void patch_clock(void)
+{
+    static const uint16_t prefix[] = {
+        0x4e56, 0x0000, 0x48e7, 0x0300, 0x302e, 0x0008, 0x48c0, 0xd1b9,
+    };
+    static const uint16_t tail[] = { 0x4a9f, 0x4cdf, 0x0080, 0x4e5e, 0x4e75 };
+    enum { CLOCK_TICK = 0x14, CLOCK_EXIT = 0x136 };
+    uint32_t found = 0, clock_time = 0, clock_date = 0;
+    for (uint32_t off = 0; off + CLOCK_EXIT + sizeof(tail) <= st.rom_size; off += 2) {
+        uint32_t pc = st.rom_base + off;
+        if (memcmp(st.rom + off, prefix, sizeof(prefix)) != 0 ||
+            st_peek32(pc + CLOCK_TICK) != 0x302e0008 || st_peek16(pc + 0x18) != 0xd179 ||
+            st_peek32(pc + 0x1e) != 0x0c7907d0 || st_peek32(pc + 0x26) != 0x6d00010e ||
+            st_peek16(pc + 0x32) != 0x5279 || st_peek16(pc + 0x94) != 0x3039 ||
+            memcmp(st.rom + off + CLOCK_EXIT, tail, sizeof(tail)) != 0) {
+            continue;
+        }
+        uint32_t t = st_peek32(pc + 0x34), d = st_peek32(pc + 0x96);
+        if (t < 0x800 || d < 0x800 || t == d || ((t | d) & 1) ||
+            !st_ram_range(t, 2) || !st_ram_range(d, 2) ||
+            st_peek32(pc + 0x3a) != t || st_peek32(pc + 0xa6) != d) {
+            continue;
+        }
+        if (found) {
+            ST_LOGW("TOS clock patch skipped: multiple tick handlers match");
+            return;
+        }
+        found = pc + CLOCK_TICK;
+        clock_time = t;
+        clock_date = d;
+    }
+    if (!found) {
+        ST_LOGW("TOS clock patch skipped: tick handler differs");
+        return;
+    }
+
+    /* Keep the tick handler's scheduler update. Replace its separate
+     * time-of-day increment with a native call and branch to the epilogue. */
+    uint16_t patch[] = { ST_OP_SYNC_CLOCK, 0x6000, CLOCK_EXIT - (CLOCK_TICK + 4) };
+    memcpy(st.rom + (found - st.rom_base), patch, sizeof(patch));
+    st.clock_sync_pc = found;
+    st.clock_time = clock_time;
+    st.clock_date = clock_date;
+    ST_LOGI("TOS patch: wall-clock time for GEMDOS");
+}
+
+static uint32_t unique_words(const uint16_t *pattern, size_t bytes)
+{
+    uint32_t address = 0;
+    for (uint32_t off = 0; off + bytes <= st.rom_size; off += 2) {
+        if (memcmp(st.rom + off, pattern, bytes) == 0) {
+            if (address) {
+                return 0;
+            }
+            address = st.rom_base + off;
+        }
+    }
+    return address;
+}
+
+/* Keep the IKBD protocol as-is. Fix the stock BIOS's year conversion on
+ * both sides so XBIOS and GEMDOS agree across the year 2000 boundary. */
+static void patch_clock_year(void)
+{
+    static const uint16_t decode[] = {
+        0x6100, 0x00ea, 0x0400, 0x0050, 0x1400, 0xe982, 0x6100, 0x00de, 0xd400,
+    };
+    static const uint16_t encode[] = {
+        0x1002, 0x0200, 0x007f, 0x6122, 0x0610, 0x0080, 0x123c, 0x001b,
+    };
+    uint32_t rd = unique_words(decode, sizeof(decode));
+    uint32_t wr = unique_words(encode, sizeof(encode));
+    if (!rd || !wr) {
+        ST_LOGW("TOS clock patch skipped: XBIOS year conversion differs");
+        return;
+    }
+    st.clock_decode_pc = rd + 4;
+    st.clock_encode_pc = wr + 8;
+    const uint16_t native_call[] = { ST_OP_SYNC_CLOCK, 0x4e71 };
+    memcpy(st.rom + (st.clock_decode_pc - st.rom_base), native_call, sizeof(native_call));
+    memcpy(st.rom + (st.clock_encode_pc - st.rom_base), native_call, sizeof(native_call));
+}
+
 void tos_patch_apply(uint16_t version, bool any_resolution)
 {
     for (size_t i = 0; i < COUNT(patches); i++) {
@@ -277,5 +362,9 @@ void tos_patch_apply(uint16_t version, bool any_resolution)
             block_write(&p->blocks[b]);
         }
         ST_LOGI("TOS patch: %s", p->what);
+    }
+    if (version == 0x0162 || version == 0x0206) {
+        patch_clock();
+        patch_clock_year();
     }
 }

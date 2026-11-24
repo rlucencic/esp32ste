@@ -5,6 +5,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <time.h>
 #include "diskspace.h"
 #include "st.h"
 
@@ -25,6 +26,7 @@ bool ahdi_partition_space(const diskspace_disk_t *disk, uint64_t base, uint64_t 
 
 #define ST_CPU_HZ           8010613     /* 32.084988 MHz / 4 */
 #define ST_MFP_HZ           2457600
+#define ST_OP_SYNC_CLOCK    0x000F      /* native call from the TOS timer */
 
 /* Interrupt levels from the GLUE */
 #define ST_IRQ_HBL          2
@@ -69,6 +71,9 @@ typedef struct {
     int start_resolution;
     uint32_t rez_report_pc;         /* native calls in the patched AES routine */
     uint32_t rez_adjust_pc;
+    uint32_t clock_sync_pc;         /* native call in the patched GEMDOS timer */
+    uint32_t clock_decode_pc, clock_encode_pc; /* native year conversion in XBIOS */
+    uint32_t clock_date, clock_time; /* GEMDOS time-of-day words in guest RAM */
     bool first_gem_start;
     int desktop_resolution;
     void (*resolution_changed)(int resolution);
@@ -117,6 +122,7 @@ void st_ram_read(uint32_t address, uint8_t *dst, uint32_t len);
 /* gemdos.c: SD card / host folder as drive C: (or after the hard disk's) */
 void gemdos_init(const char *root, bool boot);
 void gemdos_reset(void);
+void gemdos_clock_set(void);
 int m68k_host_illegal(int opcode);
 
 /* GEM (re)started in this resolution */
@@ -207,6 +213,7 @@ void blitter_write16(uint32_t address, uint16_t value);
 
 /* acia.c */
 void acia_reset(void);
+time_t ikbd_clock_now(void);
 uint8_t acia_read(uint32_t address);
 void acia_write(uint32_t address, uint8_t value);
 void acia_advance(int cpu_cycles);

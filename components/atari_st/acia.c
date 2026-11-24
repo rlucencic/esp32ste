@@ -73,8 +73,8 @@ static struct {
     int abs_x, abs_y, abs_max_x, abs_max_y;
     uint8_t joystick[2];
 
-    /* Time-of-day clock: host time + offset set by the ST */
-    time_t clock_offset;
+    time_t clock_epoch;          /* midnight local time on 1980-01-01 */
+    time_t clock_offset;         /* guest-set time minus monotonic seconds, or 0 */
 } ikbd;
 
 /* Producers on several tasks (taking turns under the lock), one consumer
@@ -251,12 +251,25 @@ static void ikbd_reset(void)
     ikbd.out_head = ikbd.out_tail = 0;
 }
 
-/* The IKBD clock follows the host's local time; setting it from the ST
- * keeps an offset.
- */
-static time_t clock_now(void)
+static time_t monotonic_seconds(void)
 {
-    return time(NULL) + ikbd.clock_offset;
+    struct timespec now;
+    return clock_gettime(CLOCK_MONOTONIC, &now) == 0 ? now.tv_sec : 0;
+}
+
+/* When the board clock is unset, show a running clock at the start of
+ * TOS's date range. A guest-set clock advances independently of NTP. */
+time_t ikbd_clock_now(void)
+{
+    LOCK();
+    time_t offset = ikbd.clock_offset;
+    time_t epoch = ikbd.clock_epoch;
+    UNLOCK();
+    if (offset) {
+        return offset + monotonic_seconds();
+    }
+    time_t now = time(NULL);
+    return now >= epoch ? now : epoch + monotonic_seconds();
 }
 
 void st_get_ikbd_status(st_ikbd_status_t *status)
@@ -265,7 +278,7 @@ void st_get_ikbd_status(st_ikbd_status_t *status)
     status->joystick_mode = ikbd.joy_mode;
     status->paused = ikbd.paused;
     status->buttons = ikbd.buttons;
-    status->clock = clock_now();
+    status->clock = ikbd_clock_now();
 }
 
 static void clock_set(int year, int month, int day, int hour, int minute, int second)
@@ -274,7 +287,14 @@ static void clock_set(int year, int month, int day, int hour, int minute, int se
         .tm_year = (year < 80 ? year + 100 : year), .tm_mon = month - 1, .tm_mday = day,
         .tm_hour = hour, .tm_min = minute, .tm_sec = second, .tm_isdst = -1,
     };
-    ikbd.clock_offset = mktime(&tm) - time(NULL);
+    time_t when = mktime(&tm);
+    if (when != (time_t)-1) {
+        time_t offset = when - monotonic_seconds();
+        LOCK();
+        ikbd.clock_offset = offset;
+        UNLOCK();
+        gemdos_clock_set();
+    }
 }
 
 static void run_command(const uint8_t *c)
@@ -316,7 +336,7 @@ static void run_command(const uint8_t *c)
                   from_bcd(c[4]), from_bcd(c[5]), from_bcd(c[6]));
         break;
     case 0x1C: {
-        time_t t = clock_now();
+        time_t t = ikbd_clock_now();
         struct tm tm;
         localtime_r(&t, &tm);
         out_byte(0xFC);
@@ -375,6 +395,11 @@ void acia_advance(int cpu_cycles)
 
 void acia_reset(void)
 {
+    struct tm boot_epoch = { .tm_year = 80, .tm_mday = 1, .tm_isdst = -1 };
+    time_t epoch = mktime(&boot_epoch);
+    LOCK();
+    ikbd.clock_epoch = epoch;
+    UNLOCK();
     acia_master_reset(&ikbd.kbd);
     acia_master_reset(&ikbd.midi);
     ikbd.kbd.control = ikbd.midi.control = 0;

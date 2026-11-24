@@ -441,6 +441,26 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
   uses the second FAT for Atari volumes with two copies and reruns
   between frames when writes settle.
 
+## Clock
+
+The IKBD follows the board's local clock, starting at 1980-01-01 while
+the board time is unset. A clock set through TOS or IKBD advances with
+monotonic elapsed time, so later network time adjustments leave it
+alone. The GEMDOS timer patch for TOS 1.62 and 2.06 keeps its scheduler
+counter and reads the IKBD clock for the GEMDOS date, time and disk
+timestamps. The XBIOS patches convert correctly between the IKBD's
+two-digit BCD year and the DOS year for 1980–2079. ROM signatures guard
+the patches and the host tested the US versions.
+
+The host reproduced a boot before time sync and ran TOS at half its
+usual frame rate. Both automatic clocks picked up the time change
+without a reset and kept pace with wall time. Manual GEMDOS setters
+returned the new values to immediate reads and held them across the
+same simulated sync. An AHDI-booted guest probe checked GEMDOS and XBIOS
+against each other while the guest's 200 Hz timer advanced.
+The MaTouch with TOS 2.06 and the Tab5 with TOS 1.62 both passed the
+guest probe against network-synchronized board time.
+
 ## Open items
 
 - `.STX` (Pasti) images are not supported; `.MSA` is read-only.
@@ -456,15 +476,6 @@ buffers, screen dumps, the serial port) are in `../esp32emu/CLAUDE.md`.
 - Floppy timing is about 10x faster than a real drive (2 ms per sector).
 - Public on GitHub (`github.com/rlucencic/esp32ste`, pushed to `main`).
   Licence: MIT (`LICENSE`), like Musashi.
-- **Clock** (the clock audit, 2026-10-21: `../esp32emu/CLAUDE.md`, To do):
-  on the MaTouch, started before NTP (1970), the cartridge's
-  Tsettime/Tsetdate at reset leave GEMDOS at 1980 (clamped) until the next
-  reset; if TOS passes them on to the IKBD ($1B), `clock_set()` keeps an
-  offset of about +10 years, and after NTP the IKBD would read ~2036 (not
-  confirmed: try in the host build with the time at 1970). A clock set from
-  GEM before NTP is shifted by NTP's step (the offset). GEMDOS counts
-  emulated time after reset: below real time (the MaTouch's ~78%) it falls
-  behind, ~13 minutes an hour.
 
 ## Working with the user
 

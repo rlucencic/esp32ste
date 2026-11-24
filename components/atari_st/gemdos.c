@@ -3,8 +3,7 @@
  * the letter after the partitions of a hard disk image TOS boots (acsi.c).
  *
  * A small cartridge at $FA0000 runs before TOS boots from disk. It sets
- * TOS's date and time from the host clock (an STE has no RTC and TOS
- * otherwise starts at its build date). With a folder it also adds its drive
+ * TOS's date and time. With a folder it also adds its drive
  * to _drvbits, can make it the boot drive, and hooks the GEMDOS trap. Each
  * GEMDOS call then traps into the emulator (an illegal opcode inside the
  * cartridge): calls on the drive or on our file handles are answered here from the
@@ -33,6 +32,7 @@
 
 /* Cartridge layout (offsets) */
 #define CART_INIT           0x28
+#define CART_INIT_RETURN    0x46
 #define CART_TRAP1          0x50
 #define CART_RTE            0x52
 #define CART_PEXEC          0x54
@@ -1010,9 +1010,59 @@ static dispatch_t gemdos_call(uint32_t args, int32_t *ret)
 
 /* ---- native calls from the cartridge -------------------------------------- */
 
+static time_t clock_sample;
+
+/* The patched GEMDOS tick keeps the scheduler's elapsed milliseconds.
+ * Read the time-of-day clock separately, including for file timestamps. */
+static void native_sync_clock(void)
+{
+    time_t now = ikbd_clock_now();
+    if (now != clock_sample) {
+        clock_sample = now;
+        uint16_t t, d;
+        dos_datetime(now, &t, &d);
+        st_poke16(st.clock_time, t);
+        st_poke16(st.clock_date, d);
+    }
+}
+
+static void native_clock_year(bool encode)
+{
+    /* The IKBD packet has a two-digit BCD calendar year. XBIOS uses a
+     * binary year counted from 1980, wrapping BCD 00–79 into 2000–2079. */
+    if (encode) {
+        uint32_t a0 = m68k_get_reg(NULL, M68K_REG_A0) & 0xFFFFFF;
+        if (st_ram_range(a0, 1)) {
+            uint8_t b = st_peek8(a0);
+            unsigned year = ((b >> 4) * 10 + (b & 15) + 80) % 100;
+            st_poke8(a0, (year / 10 << 4) | (year % 10));
+        }
+    } else {
+        uint32_t d0 = m68k_get_reg(NULL, M68K_REG_D0);
+        unsigned year = d0 & 0xFF;
+        m68k_set_reg(M68K_REG_D0, (d0 & ~0xFFu) | (year + 20) % 100);
+    }
+}
+
+void gemdos_clock_set(void)
+{
+    if (st.clock_sync_pc) {
+        /* The BIOS has sent the last byte of Settime. Publish the new
+         * values before GEMDOS returns to the caller. */
+        clock_sample = 0;
+        native_sync_clock();
+    }
+}
+
 /* Host local time as GEMDOS date (high word) and time (low word) */
 static void native_gettime(void)
 {
+    if (st.clock_sync_pc) {
+        /* Seed the time words without asking TOS to set the IKBD clock. */
+        native_sync_clock();
+        m68k_set_reg(M68K_REG_PC, CART_BASE + CART_INIT_RETURN);
+        return;
+    }
     uint16_t t, d;
     dos_datetime(time(NULL), &t, &d);
     m68k_set_reg(M68K_REG_D0, ((uint32_t)d << 16) | t);
@@ -1126,6 +1176,14 @@ int m68k_host_illegal(int opcode)
      * the top of the PC
      */
     uint32_t pc = m68k_get_reg(NULL, M68K_REG_PPC) & 0xFFFFFF;
+    if (opcode == ST_OP_SYNC_CLOCK && pc == st.clock_sync_pc && pc) {
+        native_sync_clock();
+        return 1;
+    }
+    if (opcode == ST_OP_SYNC_CLOCK && pc && (pc == st.clock_decode_pc || pc == st.clock_encode_pc)) {
+        native_clock_year(pc == st.clock_encode_pc);
+        return 1;
+    }
     if (opcode == OP_REPORT_REZ && pc == st.rez_report_pc && pc) {
         st_desktop_resolution(m68k_get_reg(NULL, M68K_REG_D2) & 3);
         return 1;
@@ -1150,6 +1208,7 @@ int m68k_host_illegal(int opcode)
 
 void gemdos_reset(void)
 {
+    clock_sample = 0;
     for (int i = 0; i < MAX_FILES; i++) {
         if (hd.files[i].f) {
             fclose(hd.files[i].f);

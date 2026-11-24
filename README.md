@@ -109,6 +109,8 @@ all are built on the shared runtime
 - **Sound** on the board's speaker: on the Tab5 its built-in one (on by
   default), on the MaTouch an optional speaker on its amplifier output
   (`menuconfig`)
+- **Clock** follows the board's local time, including when network time
+  arrives after TOS starts. A clock set inside TOS keeps its own time.
 
 <p align="center">
   <img src="docs/images/web-disks.png" width="80%" alt="Atari STE web page with ACSI free space, disk uploads and a hard disk size selector">
